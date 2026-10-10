@@ -173,6 +173,7 @@ private slots:
     void escapePutsTheMarkerBack();
     void draggingAnArmDoesNotOrbitOrSelect();
     void anAxisKeyAsksForTheCoordinate();
+    void cAsksForTheDistanceToTheChassis();
     void aPosedMechanismHasNoArrowsAndNoKeys();
     void aGhostHasNoArrowsAndNoKeys();
     void noMemberIsDrawnBetweenTwoChassisPoints();
@@ -259,6 +260,31 @@ void TestViewportEditing::anAxisKeyAsksForTheCoordinate()
     QCOMPARE(asked.at(0).at(0).toInt(), 0);
     QCOMPARE(asked.at(0).at(1).toInt(), 0);
     QCOMPARE(asked.at(1).at(1).toInt(), 2);
+}
+
+void TestViewportEditing::cAsksForTheDistanceToTheChassis()
+{
+    SelectedPoint scene;
+    QSignalSpy asked(&scene.viewport, &ViewportWidget::chassisDistanceRequested);
+    QSignalSpy coordinate(&scene.viewport, &ViewportWidget::coordinateEntryRequested);
+
+    scene.pressKey(Qt::Key_C);
+    QCOMPARE(asked.size(), 1);
+    QCOMPARE(asked.at(0).at(0).toInt(), 0);
+    QCOMPARE(coordinate.size(), 0);
+
+    // The ribbon asks the same way.
+    scene.viewport.requestChassisDistance();
+    QCOMPARE(asked.size(), 2);
+
+    // Not for a point that is not moved on its own, nor while posed.
+    scene.viewport.setLockedPoints({ true, false });
+    scene.pressKey(Qt::Key_C);
+    scene.viewport.requestChassisDistance();
+    scene.viewport.setLockedPoints({});
+    scene.viewport.setPointEditingEnabled(false);
+    scene.pressKey(Qt::Key_C);
+    QCOMPARE(asked.size(), 2);
 }
 
 void TestViewportEditing::aPosedMechanismHasNoArrowsAndNoKeys()

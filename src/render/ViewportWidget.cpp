@@ -291,6 +291,17 @@ void ViewportWidget::setLockedPoints(const std::vector<bool>& locked)
     update();
 }
 
+bool ViewportWidget::selectedPointMovable() const
+{
+    return m_pointEditingEnabled && m_selectedPoint >= 0 && !isLockedPoint(m_selectedPoint)
+           && m_drag == Drag::None;
+}
+
+void ViewportWidget::requestChassisDistance()
+{
+    if (selectedPointMovable()) emit chassisDistanceRequested(m_selectedPoint);
+}
+
 bool ViewportWidget::isLockedPoint(int index) const
 {
     return index >= 0 && index < static_cast<int>(m_locked.size())
@@ -1236,16 +1247,20 @@ void ViewportWidget::keyPressEvent(QKeyEvent* event)
         default: return -1;
         }
     }();
+    const bool toChassis = event->key() == Qt::Key_C;
 
     // Unmodified, so Ctrl+Z stays whatever Ctrl+Z is, and with a marker to ask
     // about. Anything else goes on to the window, which has its own shortcuts.
-    if (axis < 0 || event->modifiers() != Qt::NoModifier || !m_pointEditingEnabled
-        || m_selectedPoint < 0 || isLockedPoint(m_selectedPoint) || m_drag != Drag::None) {
+    if ((axis < 0 && !toChassis) || event->modifiers() != Qt::NoModifier
+        || !selectedPointMovable()) {
         QOpenGLWidget::keyPressEvent(event);
         return;
     }
 
-    emit coordinateEntryRequested(m_selectedPoint, axis);
+    if (toChassis)
+        emit chassisDistanceRequested(m_selectedPoint);
+    else
+        emit coordinateEntryRequested(m_selectedPoint, axis);
     event->accept();
 }
 

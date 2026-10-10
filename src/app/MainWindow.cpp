@@ -54,6 +54,10 @@ MainWindow::MainWindow(Project project, QWidget* parent)
     m_pointEditing = new PointEditController(
         m_viewport, hardpoints(),
         [this](const QString& text, int milliseconds) { showStatus(text, milliseconds); }, this);
+    m_pointEditing->setChassisSource([this]() -> const MeshQuery* {
+        if (!m_viewport->hasMesh()) return nullptr;
+        return m_session->chassis().query(m_viewport->mesh());
+    });
     buildCommands();
     buildRibbon();
     finishCommands(this, m_commands);

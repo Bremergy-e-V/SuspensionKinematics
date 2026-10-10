@@ -104,7 +104,13 @@ public:
     /// ghost, the mirror of another. It gets no arrows and no X/Y/Z field, and
     /// is drawn dimmed. Dropped with the points, like the grounded flags.
     void setLockedPoints(const std::vector<bool>& locked);
+    /// Ask for the selected marker's distance to the chassis, as C does. Nothing
+    /// when there is no marker that may be moved.
+    void requestChassisDistance();
     bool isLockedPoint(int index) const;
+    /// Whether the selected marker may be moved from here: editing is on,
+    /// it is not a ghost and nothing is being dragged.
+    bool selectedPointMovable() const;
     /// How many segments the linkage actually draws, which is what the parts
     /// ask for less the ones the rule above takes out.
     int drawnSegmentCount() const { return static_cast<int>(m_linkVertices.size()) / 2; }
@@ -184,6 +190,10 @@ signals:
     /// is the coordinate to type, 0 for X. The value itself lives in the table,
     /// so asking for it is all that happens here.
     void coordinateEntryRequested(int index, int axis);
+    /// C was pressed over the viewport with a marker selected, or the ribbon
+    /// asked for the same thing: the distance to the chassis is to be typed,
+    /// and held while the marker is dragged.
+    void chassisDistanceRequested(int index);
     /// Anything a project remembers about the view changed: the camera moved,
     /// the mode or the labels were toggled, a marker was selected. Emitted on
     /// every orbit step, so anything listening has to be cheap or debounced.
