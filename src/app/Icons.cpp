@@ -74,6 +74,7 @@ constexpr IconEntry kIcons[] = {
     { Icon::Tag, "tag" },
     { Icon::Template, "template" },
     { Icon::Trash, "trash" },
+    { Icon::Triangle, "triangle" },
     { Icon::Triangles, "triangles" },
     { Icon::Vector, "vector" },
     { Icon::Wand, "wand" },

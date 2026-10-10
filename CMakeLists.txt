@@ -149,6 +149,8 @@ add_library(suspkin_core STATIC
     src/model/HardpointGenerator.cpp
     src/model/ChassisOffset.h
     src/model/ChassisOffset.cpp
+    src/model/RockerDesign.h
+    src/model/RockerDesign.cpp
     src/io/LinkageTemplate.h
     src/io/LinkageTemplate.cpp
     src/io/XlsxHardpoints.h
@@ -275,6 +277,7 @@ qt_add_executable(suspkin
     src/app/features/GenerateFeature.cpp
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
+    src/app/features/RockerFeature.cpp
     src/app/features/AnalysisFeature.cpp
     src/app/features/ViewFeature.cpp
     src/app/features/PanelsFeature.cpp
@@ -308,6 +311,8 @@ qt_add_executable(suspkin
     src/app/ExpressionSpinBox.cpp
     src/app/GenerateDialog.h
     src/app/GenerateDialog.cpp
+    src/app/RockerDialog.h
+    src/app/RockerDialog.cpp
     src/app/PartDialogs.h
     src/app/PartDialogs.cpp
     src/app/SteeringDialog.h
@@ -408,7 +413,7 @@ set(SUSPKIN_ICON_NAMES
     folder-open folder-plus folder-search forms history info-circle info-square-rounded
     layout-dashboard license line list-details logout refresh restore row-insert-bottom
     row-remove ruler-measure sphere steering-wheel table table-export table-minus table-plus
-    tag template trash triangles vector wand wheel x)
+    tag template trash triangle triangles vector wand wheel x)
 set(SUSPKIN_ICONS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons")
 set(SUSPKIN_ICONS "")
 foreach(_icon IN LISTS SUSPKIN_ICON_NAMES)

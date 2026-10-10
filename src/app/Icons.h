@@ -62,6 +62,7 @@ enum class Icon {
     Tag,
     Template,
     Trash,
+    Triangle,
     Triangles,
     Vector,
     Wand,

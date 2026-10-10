@@ -23,6 +23,10 @@ struct Vec3 {
     constexpr Vec3() = default;
     constexpr Vec3(double ax, double ay, double az) : x(ax), y(ay), z(az) {}
 
+    /// Exactly the same coordinates: for a stored value read back, not for
+    /// geometry, which compares within a tolerance.
+    bool operator==(const Vec3& other) const = default;
+
     static Vec3 fromVector(const QVector3D& v)
     {
         return Vec3(static_cast<double>(v.x()), static_cast<double>(v.y()),

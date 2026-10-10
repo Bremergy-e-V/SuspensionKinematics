@@ -413,6 +413,37 @@ a double wishbone. Do not put them back in.
   geometry -- an upright in the model -- is detected and those pivots go on their
   lines with a warning. A ray that misses says so; nothing is invented.
 
+## The rocker as a part
+
+**Linkage > Rocker** (`src/model/RockerDesign.*`, core, tested;
+`src/app/RockerDialog.*`, `features/RockerFeature.cpp`) designs each corner's
+rocker and damper from the 2025 car's chalk-board sketch: a pivot and an axis
+(yaw, tilt), L1 to the pushrod and the angle that turns it from straight up, L2
+to the damper's eye at an angle from L1, beta at the eye and Ld for the damper,
+and an optional L3 for a drop link. Every arm lies in the plane square to the
+axis, and every angle is positive turning *inboard*, so one set of numbers means
+the same rocker on either side. The pushrod itself -- its length and alpha -- is
+not set here: its outer end is on a wishbone and is placed by hand.
+
+- The designs are stored in the manifest under `rockers`, one per corner. Their
+  points go into the table through `planRockers()` -> `placeGeneratedPoints()`,
+  previewed and one-shot like Generate, and as one undo step. The designs are
+  *not* in `EditState`; like the generator's targets they are saved when the
+  dialog is accepted.
+- **A designed rocker is one rigid part.** `rockerGroups()` names, per corner
+  and side, the pivot, its axis point, the ends of L1, L2 and L3 and *both* ends
+  of the damper; `ProjectSession::applyRockerGroups()` hands them to
+  `HardpointModel::setRigidGroups()` on every resolve. Moving any of them -- a
+  cell, an arrow, the X/Y/Z field, `movePoint()` -- moves all of them by the
+  same amount, still as one `coordinateChanged()` and one step. Rotating it is
+  the L1 angle in the dialog.
+- The table is where a moved rocker's position lives. The dialog starts a
+  designed corner from `followTable()` (the stored shape, the pivot where the
+  table has it now), and an undesigned one from `measureRocker()`, which reads
+  an existing hand-placed rocker back as a design -- so ticking it does not
+  first throw it somewhere else. Placing what was read back moves nothing; a
+  test says so.
+
 ## Distance to the chassis
 
 **Hardpoints > Distance to Chassis** puts the selected point a given distance
@@ -844,7 +875,9 @@ src/model/    Hardpoint, HardpointTable, hardpoint mirroring, what each point
               resolves to, where the wheel models are placed, the solver and
               its sweeps, the Simulation that binds every axle and poses the
               car, the generator that runs it the other way -- design
-              targets to hardpoints -- and the undo history of the points
+              targets to hardpoints -- the rocker designed as a part, putting
+              a point a distance off the chassis, and the undo history of the
+              points
 src/io/       STL and STEP readers behind importMeshFile(), a minimal ZIP
               reader/rewriter, the hardpoint workbook reader/writer, and the
               linkage template reader/writer

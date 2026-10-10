@@ -93,6 +93,7 @@ void ProjectSession::resolveFromTable()
     const HardpointTable& table = m_hardpoints.model().table();
     m_linkage.resolve(table);
     emit partsResolved();
+    applyRockerGroups();
 
     // The configuration table is resolved against the same two things the parts
     // are, so whatever changed there changed this too. What was inferred is the
@@ -107,6 +108,16 @@ void ProjectSession::resolveFromTable()
     // a template that is not there yet. Posing places the wheels as well.
     resolveMechanism();
     emit resolved();
+}
+
+void ProjectSession::applyRockerGroups()
+{
+    // By name and resolved against the same template and table the parts are,
+    // so a rename or a new template is followed the same way.
+    m_hardpoints.model().setRigidGroups(rockerGroups(m_project.rockers(),
+                                                     m_linkage.linkageTemplate(),
+                                                     m_project.mirror(),
+                                                     m_hardpoints.model().table()));
 }
 
 void ProjectSession::resolveMechanism()
