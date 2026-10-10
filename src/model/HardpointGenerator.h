@@ -21,11 +21,12 @@ class MeshQuery;
 /// template says what each role is called, so a team whose template names its
 /// lower front pivot "FL_LOA_front" gets exactly that.
 ///
-/// The rocker group -- pushrod, rocker, damper -- and the anti-roll bar are
-/// here too, but they are packaging more than they are a consequence of the
-/// vehicle targets: they come from a handful of placement inputs of their own,
-/// one of which is a target (the installation ratio), and each group can be
-/// left out so a rocker placed by hand stays where it was put.
+/// A double wishbone corner and nothing else: the wishbones, the upright and
+/// the steering. The pushrod, the rocker, the damper and the anti-roll bar are
+/// packaging, not a consequence of the vehicle targets; the rocker is designed
+/// as a part of its own (RockerDesign) and the rest is placed by hand. That is
+/// also what keeps the generator working whatever else a template describes,
+/// as long as the corner is a double wishbone.
 enum class DesignRole {
     LowerFront,
     LowerRear,
@@ -38,26 +39,13 @@ enum class DesignRole {
     WheelCenter,
     WheelAxis,
     ContactPatch,
-    PushrodOuter,
-    PushrodInner,
-    RockerPivot,
-    RockerAxis,
-    DamperOutboard,
-    DamperInboard,
-    AntiRollDropLinkOuter,
-    AntiRollArmEnd,
-    AntiRollArmRoot,
-    AntiRollBearing,
 };
 
 inline constexpr DesignRole kDesignRoles[] = {
     DesignRole::LowerFront,    DesignRole::LowerRear,      DesignRole::LowerOuter,
     DesignRole::UpperFront,    DesignRole::UpperRear,      DesignRole::UpperOuter,
     DesignRole::TieRodInboard, DesignRole::TieRodOutboard, DesignRole::WheelCenter,
-    DesignRole::WheelAxis,     DesignRole::ContactPatch,   DesignRole::PushrodOuter,
-    DesignRole::PushrodInner,  DesignRole::RockerPivot,    DesignRole::RockerAxis,
-    DesignRole::DamperOutboard, DesignRole::DamperInboard, DesignRole::AntiRollDropLinkOuter,
-    DesignRole::AntiRollArmEnd, DesignRole::AntiRollArmRoot, DesignRole::AntiRollBearing,
+    DesignRole::WheelAxis,     DesignRole::ContactPatch,
 };
 inline constexpr std::size_t kDesignRoleCount = std::size(kDesignRoles);
 
@@ -67,14 +55,6 @@ QString designRoleLabel(DesignRole role);
 QString MechanismTemplate::*mechanismRole(DesignRole role);
 /// The name @p mechanism gives @p role, or empty when it names none.
 QString mechanismName(const MechanismTemplate& mechanism, DesignRole role);
-
-/// Which bodies the pushrod and the anti-roll drop link pick up on. The
-/// linkage template says, because the solver has to be told the same thing;
-/// the generator only puts the pickups where those bodies are.
-struct DesignMounts {
-    PushrodMount pushrod = PushrodMount::UpperArm;
-    DropLinkMount dropLink = DropLinkMount::Rocker;
-};
 
 /// Step 12 of the construction: the one chassis pivot that was left off the
 /// tie rod's plane, and where it would have to be to lie on it.
@@ -102,9 +82,7 @@ struct GeneratedCorner {
     double side = 1.0; ///< +1 on the left, -1 on the right
 
     std::array<Vec3, kDesignRoleCount> points{};
-    /// Which of @ref points were placed. The wishbones, the upright and the
-    /// steering always are when the corner is ok; the rocker group and the bar
-    /// only when asked for and when they could be.
+    /// Which of @ref points were placed: every role, when the corner is ok.
     std::array<bool, kDesignRoleCount> placed{};
 
     /// The construction.
@@ -119,11 +97,6 @@ struct GeneratedCorner {
     /// Which pivots were put against the chassis rather than on their line.
     int pivotsOnChassis = 0;
     CoplanarityAdvice advice;
-
-    /// How far the rocker turns per millimetre of bump at design, in radians,
-    /// with the damper arm sized from it. Zero when there is no rocker.
-    double rockerRate = 0.0;
-    double damperArm = 0.0;
 
     const Vec3& at(DesignRole role) const { return points[static_cast<std::size_t>(role)]; }
     bool has(DesignRole role) const { return placed[static_cast<std::size_t>(role)]; }
@@ -143,12 +116,8 @@ struct GeneratedCorner {
 /// computed with the solver's own contactPatchFor() and tireRadiusToGround(),
 /// so the generator and the solver cannot drift apart about where a tyre
 /// touches.
-///
-/// @p mounts says which bodies the pushrod and the drop link are on, which is
-/// where their pickups are put.
 GeneratedCorner generateCorner(const DesignParameters& parameters, AxlePosition axle,
-                               const MeshQuery* chassis = nullptr,
-                               const DesignMounts& mounts = DesignMounts{});
+                               const MeshQuery* chassis = nullptr);
 
 /// @p corner in the project's own vocabulary: one point per placed role that
 /// @p mechanism -- already instantiated for this corner and side -- has a name

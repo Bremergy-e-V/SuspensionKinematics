@@ -365,6 +365,14 @@ implicitly shared between states, so a step costs one copy of the rows.
 `docs/HARDPOINT_GENERATOR_PLAN.md`: vehicle targets (`DesignParameters`, stored in
 the manifest under `design`) in, roles out. Pure and in the core.
 
+**It builds a double wishbone corner and nothing else** -- the wishbones, the
+upright, the steering. The pushrod, the rocker, the damper and the anti-roll bar
+are packaging, not a consequence of the targets, and they were taken out on
+2026-10-10: the rocker is a part of its own (see "The rocker as a part"), the
+pushrod's outer end and the bar are placed by hand. That is also what keeps the
+generator working whatever else a template describes, as long as the corner is
+a double wishbone. Do not put them back in.
+
 - **It produces roles, never names.** `bindGeneratedCorner()` names them through
   the project's own `MechanismTemplate`, and a role the template does not name is
   not written. `planDesign()` does the rest: every axle asked for, the far side
@@ -396,16 +404,10 @@ the manifest under `design`) in, roles out. Pure and in the core.
   stated angles would outrank the wheel axis just placed, and the scrub, trail
   and roll centre built off the generator's camber would come out wrong. An axle
   with none keeps reading its angles off the new points.
-- **The rocker group and the bar are generated from placement inputs**, per
-  axle and each behind its own switch (`generateRocker`, `generateAntiRollBar`),
-  so a hand-placed rocker is left alone. The one target among them is the
-  installation ratio: the rocker's rate comes from `CornerSolver` on the corner
-  generated so far, and the damper arm is the ratio over it, with the damper
-  square to its arm. A role that was not placed is not in
-  `GeneratedCorner::placed` and `bindGeneratedCorner()` does not write it.
-  `planDesign()` names points through the table-aware `instantiateMechanism()`,
-  so a workbook still on the bar's former names gets those points moved, not a
-  second bar.
+- `planDesign()` names points through the table-aware `instantiateMechanism()`,
+  so a workbook still on a point's former name gets that point moved, not a
+  second one beside it. Folding named points into the table, mirroring them and
+  saying what that does is `placeGeneratedPoints()`, which the rocker shares.
 - `src/geom/MeshQuery.*` (a BVH, ray casting and unsigned distance) is what puts
   inboard pivots on the imported chassis. A ball joint already inside the
   geometry -- an upright in the model -- is detected and those pivots go on their

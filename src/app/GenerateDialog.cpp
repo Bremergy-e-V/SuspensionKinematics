@@ -30,7 +30,7 @@ constexpr int kRear = 1;
 
 /// What a number in the axle columns is measured in. Short, because it is
 /// written once per row of the table below.
-enum Unit { Mm, Deg, Pct, Ratio };
+enum Unit { Mm, Deg, Pct };
 
 AxlePosition positionOf(int column) { return column == kFront ? AxlePosition::Front : AxlePosition::Rear; }
 
@@ -266,7 +266,6 @@ QWidget* GenerateDialog::buildTargets()
         case Mm: return mm;
         case Deg: return deg;
         case Pct: return pct;
-        case Ratio: break;
         }
         return QString();
     };
@@ -367,57 +366,6 @@ QWidget* GenerateDialog::buildTargets()
           "Longitudinal distance (X) from the outer tie rod end to the inner one. Positive puts "
           "the inner end ahead (+X), negative behind. It moves the inner end along X only, so "
           "the tie rod's front view -- and with it the bump steer -- stays the same." },
-        { "Pushrod and rocker", "Pushrod pickup, along the arm", &AxleDesign::pushrodPickupInboard,
-          -500, 1000, 1, Mm,
-          "Distance from the ball joint of the wishbone the pushrod is mounted on (as the "
-          "linkage template says), along that wishbone toward its chassis pivots. A pushrod on "
-          "the upright is placed by the lower wishbone's numbers." },
-        { nullptr, "Pushrod pickup, above the arm", &AxleDesign::pushrodPickupHeight, -500, 500, 1,
-          Mm, "Distance of the pushrod pickup from the wishbone's plane. Positive is above the "
-              "plane, negative below it." },
-        { nullptr, "Rocker pivot, from centreline", &AxleDesign::rockerPivotY, 0, 3000, 1,
-          Mm, "Lateral distance (Y) from the car's centreline to the rocker's pivot." },
-        { nullptr, "Rocker pivot, height", &AxleDesign::rockerPivotZ, -500, 3000, 1,
-          Mm, "Height of the rocker's pivot above the ground (Z)." },
-        { nullptr, "Rocker pivot, ahead of the pickup", &AxleDesign::rockerPivotOffsetX, -1000,
-          1000, 1, Mm,
-          "Longitudinal distance (X) from the pushrod's outer pickup to the rocker's pivot. "
-          "Positive is ahead (+X). The rocker turns about an axis along X." },
-        { nullptr, "Rocker arm to the pushrod", &AxleDesign::rockerPushrodArm, 1, 1000, 1,
-          Mm, "Distance on the rocker from its pivot to the pushrod's inner end. The pushrod "
-              "meets this arm at a right angle at design." },
-        { nullptr, "Damper arm, turned from the pushrod's", &AxleDesign::rockerDamperAngle, -180,
-          180, 1, Deg,
-          "Angle on the rocker, seen along its pivot axis, from the pushrod's arm to the "
-          "damper's arm. Positive turns inboard, toward the centreline." },
-        { nullptr, "Installation ratio", &AxleDesign::installationRatio, 0.05, 5, 3, Ratio,
-          "Damper compression per unit of wheel bump at design (motion ratio, damper over "
-          "wheel). The damper's arm on the rocker is sized so that this is met exactly." },
-        { nullptr, "Damper length", &AxleDesign::damperLength, 1, 2000, 1, Mm,
-          "Eye-to-eye length of the damper at design. The damper is laid at a right angle to "
-          "its rocker arm, so that bump compresses it." },
-        { "Anti-roll bar", "Drop link arm on the rocker", &AxleDesign::antiRollRockerArm, 1, 1000,
-          1, Mm,
-          "Distance on the rocker from its pivot to the drop link's upper end. Used when the "
-          "linkage template mounts the drop link on the rocker." },
-        { nullptr, "Drop link arm, turned from the pushrod's", &AxleDesign::antiRollRockerAngle,
-          -180, 180, 1, Deg,
-          "Angle on the rocker, seen along its pivot axis, from the pushrod's arm to the drop "
-          "link's arm. Positive turns inboard, toward the centreline. Used when the drop link is "
-          "on the rocker." },
-        { nullptr, "Drop link pickup, along the arm", &AxleDesign::antiRollPickupInboard, -500,
-          1000, 1, Mm,
-          "Used when the linkage template mounts the drop link on a wishbone or the upright: "
-          "the distance from that wishbone's ball joint toward its chassis pivots." },
-        { nullptr, "Drop link length", &AxleDesign::dropLinkLength, 1, 1000, 1, Mm,
-          "Length of the drop link between its two ball joints. It is laid at a right angle to "
-          "the rocker arm it hangs from." },
-        { nullptr, "Bar arm length", &AxleDesign::antiRollArmLength, -1000, 1000, 1,
-          Mm, "Length of the anti-roll bar's arm, from the bar's axis to the drop link. "
-              "Positive runs it forward (+X) from the bar, negative rearward." },
-        { nullptr, "Bearing inboard of the arm", &AxleDesign::antiRollBearingInset, 1, 2000, 1,
-          Mm, "Lateral distance (Y) from the bar's arm root inboard to its bearing. The bar's "
-              "axis runs through both, across the car." },
     };
 
     // A switch opens some groups: whether the group is generated at all.
@@ -432,13 +380,6 @@ QWidget* GenerateDialog::buildTargets()
           "Tick if this axle has a steering rack: the rack moves the inner tie rod end across "
           "the car (Y). Unticked, the inner tie rod end is fixed to the chassis, as on a rear "
           "axle's toe link. Written into the linkage template for this corner." },
-        { "Pushrod and rocker", "Generate the pushrod, rocker and damper",
-          &AxleDesign::generateRocker,
-          "Tick to place the pushrod, rocker and damper points from the numbers below. Untick "
-          "to keep a rocker placed by hand: none of its points are touched." },
-        { "Anti-roll bar", "Generate the anti-roll bar", &AxleDesign::generateAntiRollBar,
-          "Tick to place the anti-roll bar's points from the numbers below, on the mount the "
-          "linkage template names for the drop link. Untick to keep a bar placed by hand." },
     };
 
     for (const AxleSpec& spec : axle) {
