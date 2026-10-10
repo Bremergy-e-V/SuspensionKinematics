@@ -100,6 +100,11 @@ public:
     /// half-applied, as positions are, and setHardpoints() drops them for the
     /// same reason it drops the parts.
     void setGroundedPoints(const std::vector<bool>& grounded);
+    /// One flag per hardpoint: a point that is not moved on its own -- a
+    /// ghost, the mirror of another. It gets no arrows and no X/Y/Z field, and
+    /// is drawn dimmed. Dropped with the points, like the grounded flags.
+    void setLockedPoints(const std::vector<bool>& locked);
+    bool isLockedPoint(int index) const;
     /// How many segments the linkage actually draws, which is what the parts
     /// ask for less the ones the rule above takes out.
     int drawnSegmentCount() const { return static_cast<int>(m_linkVertices.size()) / 2; }
@@ -296,6 +301,7 @@ private:
     /// One flag per hardpoint; empty when nobody has said, which draws
     /// everything the parts name.
     std::vector<bool> m_grounded;
+    std::vector<bool> m_locked;
     std::vector<QVector3D> m_linkVertices;
     std::vector<LinkRange> m_linkRanges;
     GpuLines m_gpuLines;

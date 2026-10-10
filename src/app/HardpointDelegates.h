@@ -23,6 +23,10 @@ public:
 
     QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem& option,
                           const QModelIndex& index) const override;
+    /// A ghost's coordinates are drawn in the palette's disabled text: they
+    /// are its source's, reflected, and not for typing into.
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override;
 };
 
 /// The identifier column: the name, and a dot when the row has something wrong
