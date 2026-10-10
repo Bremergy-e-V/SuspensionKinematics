@@ -1,5 +1,6 @@
 #pragma once
 
+#include "geom/Vec3.h"
 #include "model/Hardpoint.h"
 #include "model/HardpointConfig.h"
 
@@ -87,6 +88,19 @@ public:
     /// hardpointNameProblem() has something to say about.
     bool renamePoint(int row, const QString& name);
 
+    /// Put the point at @p row at @p to as one edit: a single
+    /// coordinateChanged(), however many of its coordinates change. Its rigid
+    /// partners move with it. False when nothing moved.
+    bool movePoint(int row, const Vec3& to);
+
+    /// Points that are one part and move as one -- a rocker with its damper:
+    /// moving any of them, from a cell, an arrow or movePoint(), moves the
+    /// rest by the same amount. By name, so a group can name points the
+    /// table does not have; those are simply not there to move.
+    void setRigidGroups(std::vector<QStringList> groups);
+    /// The rows that move with @p row, not counting it.
+    QList<int> rigidPartners(int row) const;
+
     /// The configuration for every point, keyed by name.
     void setConfig(HardpointConfigMap config);
     const HardpointConfigMap& config() const { return m_config; }
@@ -140,6 +154,8 @@ signals:
 
 private:
     bool setCoordinate(const QModelIndex& index, const QVariant& value);
+    /// Move @p row and its rigid partners by @p delta, and say so per row.
+    void translateWithPartners(int row, const Vec3& delta);
     bool setConfigField(int row, int column, const QVariant& value);
     QVariant configDisplay(int row, const HardpointConfig& config, int column) const;
     QVariant tooltipFor(int row, int column) const;
@@ -148,6 +164,7 @@ private:
     HardpointConfigMap m_config;
     BodyCatalog m_catalog;
     std::optional<QSet<QString>> m_solved;
+    std::vector<QStringList> m_rigidGroups;
 };
 
 } // namespace suspkin
