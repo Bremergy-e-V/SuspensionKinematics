@@ -313,6 +313,8 @@ qt_add_executable(suspkin
     src/app/GenerateDialog.cpp
     src/app/RockerDialog.h
     src/app/RockerDialog.cpp
+    src/app/RockerSketch.h
+    src/app/RockerSketch.cpp
     src/app/ChassisDistanceEntry.h
     src/app/ChassisDistanceEntry.cpp
     src/app/PartDialogs.h

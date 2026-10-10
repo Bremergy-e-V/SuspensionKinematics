@@ -18,6 +18,8 @@ class QTreeWidget;
 
 namespace suspkin {
 
+class RockerSketch;
+
 /// Linkage > Rocker: each corner's rocker and damper as a part of its own --
 /// the arms L1, L2 and L3 and their angles, the damper's angle and length --
 /// with what placing it would do to the table beside it.
@@ -68,7 +70,9 @@ private:
 
     QWidget* buildDesigns();
     QWidget* buildPreview();
-    QDoubleSpinBox* number(const Field& field);
+    /// A field of column @p column: editing it plans again and draws that
+    /// column's rocker.
+    QDoubleSpinBox* number(const Field& field, int column);
     void addHeading(QGridLayout* grid, int* row, const QString& text);
     /// The column's design as its fields have it now.
     RockerDesign designOf(const Column& column) const;
@@ -77,6 +81,8 @@ private:
     void showPlan();
     /// A column's fields are only open while its rocker is ticked.
     void syncEnabled();
+    /// Draw the rocker of @p column, the one last touched.
+    void showSketchOf(int column);
 
     const LinkageTemplate& m_templ;
     MirrorSpec m_mirror;
@@ -86,6 +92,8 @@ private:
     std::vector<Field> m_fields;
     std::vector<Column> m_columns;
 
+    RockerSketch* m_sketch = nullptr;
+    int m_sketchColumn = 0;
     QLabel* m_summary = nullptr;
     QTreeWidget* m_preview = nullptr;
     QLabel* m_notes = nullptr;

@@ -67,6 +67,7 @@ private slots:
     void thePivotFollowsTheTable();
     void designsRoundTripThroughTheManifest();
     void aRockerWithNoLengthIsRefused();
+    void theAxisMayStandUpright();
 };
 
 void TestRockerDesign::theArmsHaveTheLengthsAndAnglesAskedFor()
@@ -250,14 +251,51 @@ void TestRockerDesign::aRockerWithNoLengthIsRefused()
     RockerDesign d = front();
     d.damperLength = 0.0;
     QVERIFY(!layOutRocker(d).ok);
-    d = front();
-    d.axisPitch = 89.0;
-    QVERIFY(!layOutRocker(d).ok);
-
     const DesignPlan plan = planRockers({ d }, builtinLinkageTemplate(), MirrorSpec{},
                                         HardpointTable{}, HardpointTable{});
     QVERIFY(!plan.ok());
     QVERIFY(!plan.error.isEmpty());
+}
+
+void TestRockerDesign::theAxisMayStandUpright()
+{
+    // A rocker turned as a body has a frame for every axis: tilting it through
+    // 80 degrees and on to upright moves its points a little at a time, never
+    // half way round.
+    RockerDesign d = front();
+    RockerPoints previous;
+    for (double tilt = 0.0; tilt <= 90.0; tilt += 0.5) {
+        d.axisPitch = tilt;
+        const RockerPoints p = layOutRocker(d);
+        QVERIFY2(p.ok, qPrintable(p.error));
+        // The shape holds whatever the tilt.
+        QVERIFY(near(distance(p.pivot, p.pushrodInner), d.pushrodArm));
+        QVERIFY(near(dot(p.pushrodInner - p.pivot, (p.axisPoint - p.pivot).normalized()), 0.0));
+        if (tilt > 0.0) {
+            // Half a degree of tilt moves the end of a 72 mm arm well under 1 mm.
+            QVERIFY2(distance(previous.pushrodInner, p.pushrodInner) < 1.0,
+                     qPrintable(QString::number(tilt)));
+            QVERIFY(distance(previous.damperMount, p.damperMount) < 3.0);
+        }
+        previous = p;
+    }
+    // Upright, the axis is vertical and the rocker lies flat.
+    const Vec3 axis = (previous.axisPoint - previous.pivot).normalized();
+    QVERIFY(near(axis.z, 1.0));
+    QVERIFY(near(previous.pushrodInner.z, d.pivot.z));
+
+    // And it reads back off its own points.
+    const DesignPlan plan = planRockers({ d }, builtinLinkageTemplate(), MirrorSpec{},
+                                        HardpointTable{}, HardpointTable{});
+    QVERIFY2(plan.ok(), qPrintable(plan.error));
+    const std::optional<RockerDesign> read =
+        measureRocker(QStringLiteral("F"), builtinLinkageTemplate(), MirrorSpec{}, plan.table,
+                      RockerDesign{});
+    QVERIFY(read.has_value());
+    const DesignPlan again =
+        planRockers({ *read }, builtinLinkageTemplate(), MirrorSpec{}, plan.table, plan.table);
+    for (const DesignChange& change : again.changes)
+        QVERIFY2(change.distance < 1e-6, qPrintable(change.name));
 }
 
 QTEST_APPLESS_MAIN(TestRockerDesign)
