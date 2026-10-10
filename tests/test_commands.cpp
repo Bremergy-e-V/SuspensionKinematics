@@ -47,6 +47,7 @@ private slots:
     void aCommandMayAppearInMoreThanOnePlace();
     void aCommandThatSaidNothingAboutTheRibbonIsNotOnIt();
     void groupsFollowTheOrderOfTheirEarliestCommand();
+    void aGroupStaysInOnePieceWhenAnotherGroupsCommandSortsInBetween();
     void aPageNoFeaturePutAnythingOnIsNotDrawn();
 };
 
@@ -232,6 +233,45 @@ void TestCommands::groupsFollowTheOrderOfTheirEarliestCommand()
     QCOMPARE(ribbon.pageKeys(), QStringList{ QStringLiteral("view") });
 }
 
+void TestCommands::aGroupStaysInOnePieceWhenAnotherGroupsCommandSortsInBetween()
+{
+    QObject owner;
+    CommandRegistry commands(&owner);
+
+    // The View tab as it was when Show Chassis came in at 40, beside Triangles:
+    // the two features' commands interleave in order, and the ribbon read
+    // [Display: Solid] [Show: Chassis] [Display: Triangles] [Show: Labels].
+    // Who registered first is link order, so which way round the tie fell
+    // was never the feature's to decide either.
+    const auto place = [&commands](const QString& id, const QString& group, int order) {
+        CommandSpec spec = named(id);
+        spec.ribbon = { slot(QStringLiteral("view"), group, order) };
+        commands.add(std::move(spec));
+    };
+    place(QStringLiteral("view.solid"), QStringLiteral("Display"), 30);
+    place(QStringLiteral("geometry.showChassis"), QStringLiteral("Show"), 40);
+    place(QStringLiteral("view.triangles"), QStringLiteral("Display"), 40);
+    place(QStringLiteral("hardpoints.showLabels"), QStringLiteral("Show"), 50);
+
+    Ribbon ribbon;
+    buildRibbonFrom(&ribbon, commands);
+
+    // No page has two groups with the same caption: a group is where its
+    // commands asked to be, however their numbers fall among other groups'.
+    for (const QString& key : ribbon.pageKeys()) {
+        QStringList captions;
+        for (const RibbonGroup* group : ribbon.page(key)->groups()) {
+            QVERIFY2(!captions.contains(group->caption()),
+                     qPrintable(QStringLiteral("%1 has two %2 groups").arg(key, group->caption())));
+            captions << group->caption();
+        }
+    }
+    // And they are still in the order of their earliest command.
+    QStringList captions;
+    for (const RibbonGroup* group : ribbon.page(QStringLiteral("view"))->groups())
+        captions << group->caption();
+    QCOMPARE(captions, (QStringList{ QStringLiteral("Display"), QStringLiteral("Show") }));
+}
 void TestCommands::aPageNoFeaturePutAnythingOnIsNotDrawn()
 {
     QObject owner;

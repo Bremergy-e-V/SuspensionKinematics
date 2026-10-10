@@ -74,7 +74,7 @@ public:
             .checkable = true,
             .checkedByDefault = true,
             .ribbon = { { .page = QStringLiteral("geometry"), .group = tr("Chassis"), .order = 30 },
-                        { .page = QStringLiteral("view"), .group = tr("Show"), .order = 40 } },
+                        { .page = QStringLiteral("view"), .group = tr("Show"), .order = 45 } },
             .onToggled = [this](bool on) { m_context.viewport()->setMeshVisible(on); },
             .enabledWhen = [this] { return m_context.viewport()->hasMesh(); },
         });
