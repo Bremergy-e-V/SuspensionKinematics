@@ -104,7 +104,8 @@ private:
     {
         const ViewportWidget* viewport = m_context.viewport();
         return viewport->selectedHardpoints().size() == 1 && viewport->hasMesh()
-               && viewport->pointEditingEnabled();
+               && viewport->pointEditingEnabled()
+               && !m_context.hardpoints()->isGhost(viewport->selectedHardpoint());
     }
 
     void distanceToChassisDialog()

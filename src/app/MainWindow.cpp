@@ -141,10 +141,11 @@ void MainWindow::buildHardpointDock()
         const HardpointTable& table = hardpoints()->table();
         if (row < 0 || row >= static_cast<int>(table.points.size())) return;
         m_viewport->moveHardpoint(row, table.points[static_cast<std::size_t>(row)].toVector());
-        // A point of a rigid part took the rest of the part with it.
-        for (const int partner : hardpoints()->rigidPartners(row))
-            m_viewport->moveHardpoint(partner,
-                                      table.points[static_cast<std::size_t>(partner)].toVector());
+        // A point of a rigid part took the rest of the part with it, and every
+        // ghost of what moved followed.
+        for (const int follower : hardpoints()->followers(row))
+            m_viewport->moveHardpoint(follower,
+                                      table.points[static_cast<std::size_t>(follower)].toVector());
         // A coordinate is a link length, so the mechanism has to be measured
         // again. Posing it again takes the wheels with it.
         m_session->resolveMechanism();
@@ -344,6 +345,8 @@ void MainWindow::showSweep()
 void MainWindow::syncGroundedPoints()
 {
     m_viewport->setGroundedPoints(groundedPoints(hardpoints()->table(), hardpoints()->config()));
+    // Ghosts follow their source and are not moved on their own.
+    m_viewport->setLockedPoints(hardpoints()->ghostFlags());
 }
 
 void MainWindow::showPose()

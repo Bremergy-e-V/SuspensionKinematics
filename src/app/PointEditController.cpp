@@ -62,8 +62,14 @@ void PointEditController::announceEditing(int current)
     if (current < 0 || !m_viewport->pointEditingEnabled()) return;
     const HardpointTable& table = m_model->table();
     if (current >= static_cast<int>(table.points.size())) return;
+    const Hardpoint& point = table.points[static_cast<std::size_t>(current)];
+    if (m_model->isGhost(current)) {
+        m_status(tr("%1 is the mirror of %2 — move %2 and it follows").arg(point.name, point.mirrorOf),
+                 6000);
+        return;
+    }
     m_status(tr("%1 — drag an arrow to move it, or press X, Y or Z to type a coordinate")
-                 .arg(table.points[static_cast<std::size_t>(current)].name),
+                 .arg(point.name),
              6000);
 }
 

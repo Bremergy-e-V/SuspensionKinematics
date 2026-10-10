@@ -93,6 +93,7 @@ void ProjectSession::resolveFromTable()
     const HardpointTable& table = m_hardpoints.model().table();
     m_linkage.resolve(table);
     emit partsResolved();
+    m_hardpoints.model().setMirrorAxis(m_project.mirror().axis);
     applyRockerGroups();
 
     // The configuration table is resolved against the same two things the parts

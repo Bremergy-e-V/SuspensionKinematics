@@ -58,6 +58,8 @@ private slots:
     void aSolvedPointTheSolveDoesNotMoveSaysSo();
     void aPointIsMovedAsOneEdit();
     void aRigidPartMovesAsOne();
+    void aMirrorFollowsItsSourceAndCannotBeMovedAlone();
+    void aMirrorWhoseSourceIsGoneIsAnOrdinaryPoint();
 
 private:
     QModelIndex cell(int row, int column) const { return m_model->index(row, column); }
@@ -407,6 +409,67 @@ void TestHardpointModel::aRigidPartMovesAsOne()
     m_model->setRigidGroups({});
     QVERIFY(m_model->setData(cell(0, HardpointModel::ZColumn), 100.0, Qt::EditRole));
     QCOMPARE(m_model->table().points[1].coord[2], 120.0);
+}
+
+namespace {
+
+/// twoPoints() and the mirror of the outer one, as Mirror Hardpoints makes it.
+HardpointTable withAMirror()
+{
+    HardpointTable table = twoPoints();
+    Hardpoint ghost = table.points[1];
+    ghost.name = QStringLiteral("F_LCA_O_M");
+    ghost.coord[1] = -ghost.coord[1];
+    ghost.mirrorOf = QStringLiteral("F_LCA_O");
+    table.points.push_back(ghost);
+    return table;
+}
+
+} // namespace
+
+void TestHardpointModel::aMirrorFollowsItsSourceAndCannotBeMovedAlone()
+{
+    m_model->setTable(withAMirror());
+    QVERIFY(!m_model->isGhost(1));
+    QVERIFY(m_model->isGhost(2));
+    QCOMPARE(m_model->ghostFlags(), (std::vector<bool>{ false, false, true }));
+    QCOMPARE(m_model->followers(1), QList<int>{ 2 });
+
+    // The source moves, and the ghost is its reflection again: the same z,
+    // the negated y, as one edit of the source.
+    QSignalSpy moved(m_model, &HardpointModel::coordinateChanged);
+    QVERIFY(m_model->setData(cell(1, HardpointModel::ZColumn), 131.25, Qt::EditRole));
+    QVERIFY(m_model->setData(cell(1, HardpointModel::YColumn), 575.5, Qt::EditRole));
+    QCOMPARE(moved.size(), 2);
+    QCOMPARE(m_model->table().points[2].coord[2], 131.25);
+    QCOMPARE(m_model->table().points[2].coord[1], -575.5);
+    QVERIFY(m_model->movePoint(1, Vec3(-1995.0, 575.5, 131.25)));
+    QCOMPARE(m_model->table().points[2].coord[0], -1995.0);
+
+    // The ghost itself: not editable, and refused if asked anyway.
+    QVERIFY(!(m_model->flags(cell(2, HardpointModel::XColumn)) & Qt::ItemIsEditable));
+    QVERIFY(m_model->flags(cell(2, HardpointModel::NameColumn)) & Qt::ItemIsEditable);
+    QSignalSpy rejected(m_model, &HardpointModel::editRejected);
+    QVERIFY(!m_model->setData(cell(2, HardpointModel::ZColumn), 99.0, Qt::EditRole));
+    QVERIFY(!m_model->movePoint(2, Vec3(0.0, 0.0, 0.0)));
+    QCOMPARE(rejected.size(), 2);
+    QCOMPARE(moved.size(), 3);
+    QCOMPARE(m_model->table().points[2].coord[2], 131.25);
+
+    // Across another axis when the rule says so.
+    m_model->setMirrorAxis(MirrorAxis::X);
+    QVERIFY(m_model->setData(cell(1, HardpointModel::ZColumn), 140.0, Qt::EditRole));
+    QCOMPARE(m_model->table().points[2].coord[0], 1995.0);
+    QCOMPARE(m_model->table().points[2].coord[1], 575.5);
+}
+
+void TestHardpointModel::aMirrorWhoseSourceIsGoneIsAnOrdinaryPoint()
+{
+    m_model->setTable(withAMirror());
+    m_model->removePoints({ 1 });
+    QVERIFY(!m_model->isGhost(1));
+    QVERIFY(m_model->setData(cell(1, HardpointModel::ZColumn), 99.0, Qt::EditRole));
+    QCOMPARE(m_model->table().points[1].coord[2], 99.0);
 }
 
 QTEST_MAIN(TestHardpointModel)
