@@ -23,9 +23,6 @@ constexpr double kDegToRad = 0.017453292519943295769236907684886;
 /// viewport.
 constexpr double kAxisReach = 50.0;
 
-/// A steeper axis has no "up" in its plane to measure the arms from.
-constexpr double kSteepestAxis = 80.0;
-
 double rad(double degrees) { return degrees * kDegToRad; }
 
 /// The rocker's axis from its two angles: forward, turned in top view, then
@@ -37,8 +34,15 @@ Vec3 axisDirection(const RockerDesign& d)
     return Vec3(std::cos(pitch) * std::cos(yaw), std::cos(pitch) * std::sin(yaw), std::sin(pitch));
 }
 
-/// The rocker's own frame: its axis, and "up" in its plane, which is what the
-/// pushrod arm's angle is measured from.
+/// The rocker's own frame: its axis, and the "up" its pushrod arm's angle is
+/// measured from.
+///
+/// Both are a rocker lying along the car with up straight up, turned as one
+/// body: first about the vertical by the yaw, then tilted by the tilt. "Up"
+/// therefore tilts with the axis rather than being the world's up squeezed
+/// into the rocker's plane -- which has no answer for a steep axis and turned
+/// the arms half way round as the axis passed 80 degrees. Every axis, standing
+/// upright included, has a frame, and the rocker turns smoothly into it.
 struct RockerFrame {
     Axis axis;      ///< through the origin: arms are directions
     Vec3 up;        ///< unit, square to the axis
@@ -47,16 +51,15 @@ struct RockerFrame {
 
 RockerFrame frameOf(const RockerDesign& d)
 {
+    const double yaw = rad(d.axisYaw);
+    const double tilt = rad(d.axisPitch);
     RockerFrame frame;
     frame.axis = Axis{ Vec3(), axisDirection(d) };
-    const Vec3 z(0.0, 0.0, 1.0);
-    frame.up = (z - frame.axis.direction * dot(z, frame.axis.direction)).normalized();
-    // Inboard is toward the centreline. Right-handed about an axis pointing
-    // forward turns up toward -y, which is inboard on the left (+y) side.
-    const Vec3 turned = rotateAbout(frame.up, frame.axis, rad(1.0));
-    const double towardMinusY = frame.up.y - turned.y;
-    const double side = d.pivot.y >= 0.0 ? 1.0 : -1.0;
-    frame.inboard = (towardMinusY > 0.0 ? 1.0 : -1.0) * side;
+    frame.up = Vec3(-std::sin(tilt) * std::cos(yaw), -std::sin(tilt) * std::sin(yaw), std::cos(tilt));
+    // Lying along the car, right-handed about +x turns up toward -y: inboard on
+    // the left (+y) side. Turning the whole body keeps that, so the side alone
+    // says which way inboard is.
+    frame.inboard = d.pivot.y >= 0.0 ? 1.0 : -1.0;
     return frame;
 }
 
@@ -173,11 +176,6 @@ RockerDesign rockerFromJson(const QJsonObject& object)
 RockerPoints layOutRocker(const RockerDesign& d)
 {
     RockerPoints out;
-    if (!(std::abs(d.axisPitch) <= kSteepestAxis)) {
-        out.error = tr("A rocker axis steeper than %1 degrees has no up to measure its arms from.")
-                        .arg(kSteepestAxis);
-        return out;
-    }
     if (!(d.pushrodArm > 0.0 && d.damperArm > 0.0 && d.damperLength > 0.0)) {
         out.error = tr("The rocker's arms and the damper all need a length.");
         return out;

@@ -435,6 +435,16 @@ axis, and every angle is positive turning *inboard*, so one set of numbers means
 the same rocker on either side. The pushrod itself -- its length and alpha -- is
 not set here: its outer end is on a wishbone and is placed by hand.
 
+- **The axis turns the rocker as one body**: a rocker lying along the car with
+  up straight up, turned by the yaw and then tilted (`frameOf()`). "Up", what
+  L1's angle is measured from, tilts with the axis. Do not go back to
+  projecting the world's up into the rocker's plane: that has no answer for a
+  steep axis, which is why the tilt used to stop at 80 degrees and the arms
+  swung half way round near it. Every axis has a frame now, upright included,
+  and a test tilts it through 90 in half degrees.
+- `RockerSketch` draws the rocker the dialog's numbers make, seen along its
+  axis, with every length and angle marked where it is measured -- the
+  chalk-board sketch, live. It draws the column last touched.
 - The designs are stored in the manifest under `rockers`, one per corner. Their
   points go into the table through `planRockers()` -> `placeGeneratedPoints()`,
   previewed and one-shot like Generate, and as one undo step. The designs are
