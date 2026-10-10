@@ -57,6 +57,11 @@ public:
     /// model matrix, so a live slider costs nothing but a repaint.
     void setMeshTransform(const QMatrix4x4& transform);
 
+    /// Whether the imported geometry is drawn. Hiding it keeps the mesh, so the
+    /// generator can still put pivots on it and showing it again uploads nothing.
+    void setMeshVisible(bool visible);
+    bool meshVisible() const { return m_meshVisible; }
+
     /// Replace the hardpoints on screen. Selection is dropped, because the
     /// indices it refers to belong to the previous set.
     void setHardpoints(const HardpointTable& table);
@@ -257,6 +262,7 @@ private:
     GpuMesh m_gpu;
     bool m_uploadPending = false;
     QMatrix4x4 m_meshTransform;
+    bool m_meshVisible = true;
 
     /// One kind of part's worth of segment endpoints inside m_linkVertices.
     struct LinkRange {

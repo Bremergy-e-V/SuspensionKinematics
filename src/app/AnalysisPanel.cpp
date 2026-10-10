@@ -146,6 +146,7 @@ void AnalysisPanel::buildUi()
     controls->setColumnStretch(2, 1);
     layout->addLayout(controls);
 
+    layout->addLayout(buildCurveRow());
     layout->addLayout(buildShowRow());
 
     m_plot = new PlotWidget(this);
@@ -262,7 +263,7 @@ void AnalysisPanel::buildUi()
     syncPositionRange();
 }
 
-QHBoxLayout* AnalysisPanel::buildShowRow()
+QHBoxLayout* AnalysisPanel::buildCurveRow()
 {
     auto* row = new QHBoxLayout;
     row->addWidget(new QLabel(tr("Curve"), this));
@@ -271,7 +272,7 @@ QHBoxLayout* AnalysisPanel::buildShowRow()
         m_curveBox->addItem(
             QStringLiteral("%1 [%2]").arg(sweepMeasureLabel(measure), sweepMeasureUnit(measure)),
             sweepMeasureKey(measure));
-    m_curveBox->setToolTip(tr("Which curve to plot. Every axle and wheel ticked beside it is "
+    m_curveBox->setToolTip(tr("Which curve to plot. Every axle and wheel ticked under it is "
                               "drawn in the one plot."));
     // A long entry would otherwise force the dock as wide as its text.
     m_curveBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -283,8 +284,12 @@ QHBoxLayout* AnalysisPanel::buildShowRow()
         if (!m_updating) emit measureChanged();
     });
     row->addWidget(m_curveBox, 1);
+    return row;
+}
 
-    row->addSpacing(8);
+QHBoxLayout* AnalysisPanel::buildShowRow()
+{
+    auto* row = new QHBoxLayout;
     row->addWidget(new QLabel(tr("Show"), this));
     m_axleToggleRow = new QHBoxLayout;
     row->addLayout(m_axleToggleRow);
@@ -308,6 +313,7 @@ QHBoxLayout* AnalysisPanel::buildShowRow()
         connect(toggle, &QCheckBox::toggled, this, &AnalysisPanel::toggleSide);
         row->addWidget(toggle);
     }
+    row->addStretch(1);
     return row;
 }
 

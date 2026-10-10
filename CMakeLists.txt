@@ -147,6 +147,10 @@ add_library(suspkin_core STATIC
     src/model/DesignParameters.cpp
     src/model/HardpointGenerator.h
     src/model/HardpointGenerator.cpp
+    src/model/ChassisOffset.h
+    src/model/ChassisOffset.cpp
+    src/model/RockerDesign.h
+    src/model/RockerDesign.cpp
     src/io/LinkageTemplate.h
     src/io/LinkageTemplate.cpp
     src/io/XlsxHardpoints.h
@@ -269,9 +273,11 @@ qt_add_executable(suspkin
     src/app/features/SharedCommands.h
     src/app/features/HardpointWorkbookFeature.cpp
     src/app/features/HardpointsFeature.cpp
+    src/app/features/ChassisDistanceFeature.cpp
     src/app/features/GenerateFeature.cpp
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
+    src/app/features/RockerFeature.cpp
     src/app/features/AnalysisFeature.cpp
     src/app/features/ViewFeature.cpp
     src/app/features/PanelsFeature.cpp
@@ -305,6 +311,8 @@ qt_add_executable(suspkin
     src/app/ExpressionSpinBox.cpp
     src/app/GenerateDialog.h
     src/app/GenerateDialog.cpp
+    src/app/RockerDialog.h
+    src/app/RockerDialog.cpp
     src/app/PartDialogs.h
     src/app/PartDialogs.cpp
     src/app/SteeringDialog.h
@@ -399,13 +407,13 @@ qt_add_resources(suspkin "shaders"
 # list and the table in src/app/Icons.cpp are the only two places an icon is
 # named, and test_icons -- which embeds this same list -- checks they agree.
 set(SUSPKIN_ICON_NAMES
-    adjustments-horizontal angle app-window arrow-back-up arrow-forward-up braces chart-line
+    adjustments-horizontal angle app-window arrow-back-up arrow-forward-up braces car chart-line
     chevron-down chevron-up cloud-download cube device-floppy edit file-export file-import
     file-spreadsheet file-type-csv file-x flip-horizontal focus-centered
     folder-open folder-plus folder-search forms history info-circle info-square-rounded
     layout-dashboard license line list-details logout refresh restore row-insert-bottom
-    row-remove sphere steering-wheel table table-export table-minus table-plus
-    tag template trash triangles vector wand wheel x)
+    row-remove ruler-measure sphere steering-wheel table table-export table-minus table-plus
+    tag template trash triangle triangles vector wand wheel x)
 set(SUSPKIN_ICONS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons")
 set(SUSPKIN_ICONS "")
 foreach(_icon IN LISTS SUSPKIN_ICON_NAMES)

@@ -49,21 +49,6 @@ constexpr AxleField kAxleFields[] = {
     { "steeringArm", &AxleDesign::steeringArm },
     { "ackermann", &AxleDesign::ackermann },
     { "tieRodInboardOffsetX", &AxleDesign::tieRodInboardOffsetX },
-    { "pushrodPickupInboard", &AxleDesign::pushrodPickupInboard },
-    { "pushrodPickupHeight", &AxleDesign::pushrodPickupHeight },
-    { "rockerPivotY", &AxleDesign::rockerPivotY },
-    { "rockerPivotZ", &AxleDesign::rockerPivotZ },
-    { "rockerPivotOffsetX", &AxleDesign::rockerPivotOffsetX },
-    { "rockerPushrodArm", &AxleDesign::rockerPushrodArm },
-    { "rockerDamperAngle", &AxleDesign::rockerDamperAngle },
-    { "installationRatio", &AxleDesign::installationRatio },
-    { "damperLength", &AxleDesign::damperLength },
-    { "antiRollRockerArm", &AxleDesign::antiRollRockerArm },
-    { "antiRollRockerAngle", &AxleDesign::antiRollRockerAngle },
-    { "antiRollPickupInboard", &AxleDesign::antiRollPickupInboard },
-    { "dropLinkLength", &AxleDesign::dropLinkLength },
-    { "antiRollArmLength", &AxleDesign::antiRollArmLength },
-    { "antiRollBearingInset", &AxleDesign::antiRollBearingInset },
 };
 
 /// The switches, the same way.
@@ -75,8 +60,6 @@ struct AxleFlag {
 constexpr AxleFlag kAxleFlags[] = {
     { "generate", &AxleDesign::generate },
     { "steered", &AxleDesign::steered },
-    { "generateRocker", &AxleDesign::generateRocker },
-    { "generateAntiRollBar", &AxleDesign::generateAntiRollBar },
 };
 
 struct CarField {

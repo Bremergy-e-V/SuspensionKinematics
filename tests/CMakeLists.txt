@@ -206,6 +206,10 @@ qt_add_executable(test_mesh_query test_mesh_query.cpp)
 target_link_libraries(test_mesh_query PRIVATE suspkin_core Qt6::Test)
 add_test(NAME mesh_query COMMAND test_mesh_query)
 
+qt_add_executable(test_rocker_design test_rocker_design.cpp)
+target_link_libraries(test_rocker_design PRIVATE suspkin_core Qt6::Test)
+add_test(NAME rocker_design COMMAND test_rocker_design)
+
 qt_add_executable(test_project test_project.cpp)
 target_link_libraries(test_project PRIVATE suspkin_core Qt6::Test)
 add_test(NAME project COMMAND test_project)
