@@ -1,6 +1,7 @@
 #include "app/RockerDialog.h"
 
 #include "app/HardpointDelegates.h"
+#include "app/RockerSketch.h"
 #include "model/Linkage.h"
 
 #include <QCheckBox>
@@ -67,17 +68,20 @@ RockerDialog::RockerDialog(const std::vector<RockerDesign>& designs, const Linka
           "designed; the other side comes from the mirror rule." },
         { nullptr, "Pivot z", [](D& d) -> double& { return d.pivot.z; }, -1000, 3000, false,
           "Where the rocker turns, its height (Z)." },
-        { nullptr, "Axis, in top view", [](D& d) -> double& { return d.axisYaw; }, -80, 80, true,
+        { nullptr, "Axis, in top view", [](D& d) -> double& { return d.axisYaw; }, -180, 180, true,
           "The rocker's axis seen from above: 0 runs straight along the car (X), positive "
-          "turns its front end toward +Y." },
-        { nullptr, "Axis, tilt", [](D& d) -> double& { return d.axisPitch; }, -80, 80, true,
-          "The rocker's axis against the horizontal: positive raises its front end." },
+          "turns its front end toward +Y. The rocker turns with it." },
+        { nullptr, "Axis, tilt", [](D& d) -> double& { return d.axisPitch; }, -90, 90, true,
+          "The rocker's axis against the horizontal: positive raises its front end, 90 stands "
+          "it upright so the rocker lies flat. The rocker tilts with it as one piece, so its "
+          "arms keep their angles." },
         { "Pushrod arm (L1)", "L1, pivot to pushrod", [](D& d) -> double& { return d.pushrodArm; },
           1, 1000, false, "Distance on the rocker from its pivot to the pushrod's inner end." },
-        { nullptr, "L1, turned from straight up", [](D& d) -> double& { return d.pushrodArmAngle; },
+        { nullptr, "L1, turned from up", [](D& d) -> double& { return d.pushrodArmAngle; },
           -180, 180, true,
-          "Where L1 points, seen along the rocker's axis: 0 is straight up, positive turns it "
-          "inboard. This is what turns the whole rocker; every other arm follows it." },
+          "Where L1 points, seen along the rocker's axis: 0 is the rocker's up -- straight up "
+          "while the axis is level, tilted with the axis when it is not -- and positive turns "
+          "it inboard. This turns the whole rocker; every other arm follows it." },
         { "Damper (L2)", "L2, pivot to damper eye", [](D& d) -> double& { return d.damperArm; },
           1, 1000, false, "Distance on the rocker from its pivot to the damper's eye." },
         { nullptr, "Angle from L1 to L2", [](D& d) -> double& { return d.damperArmAngle; }, -180,
@@ -130,12 +134,16 @@ RockerDialog::RockerDialog(const std::vector<RockerDesign>& designs, const Linka
     m_loading = true;
     for (Column& column : m_columns) column.used->setChecked(column.startsUsed);
     m_loading = false;
+    // The sketch opens on the first rocker that is a part already.
+    const auto first = std::find_if(m_columns.begin(), m_columns.end(),
+                                    [](const Column& c) { return c.startsUsed; });
+    showSketchOf(first == m_columns.end() ? 0 : static_cast<int>(first - m_columns.begin()));
     syncEnabled();
     rebuildPlan();
     resize(1100, 700);
 }
 
-QDoubleSpinBox* RockerDialog::number(const Field& field)
+QDoubleSpinBox* RockerDialog::number(const Field& field, int column)
 {
     auto* spin = new QDoubleSpinBox(this);
     spin->setRange(field.minimum, field.maximum);
@@ -145,7 +153,10 @@ QDoubleSpinBox* RockerDialog::number(const Field& field)
     spin->setAccelerated(true);
     spin->setKeyboardTracking(false);
     spin->setMinimumWidth(96);
-    connect(spin, &QDoubleSpinBox::valueChanged, this, &RockerDialog::schedulePlan);
+    connect(spin, &QDoubleSpinBox::valueChanged, this, [this, column] {
+        showSketchOf(column);
+        schedulePlan();
+    });
     return spin;
 }
 
@@ -172,8 +183,9 @@ QWidget* RockerDialog::buildDesigns()
                "its points -- the pivot, its axis point, the arms' ends, either end of the "
                "damper -- moves all of them. Untick to leave its points where they are, as "
                "separate points again."));
-        connect(column.used, &QCheckBox::toggled, this, [this] {
+        connect(column.used, &QCheckBox::toggled, this, [this, i] {
             syncEnabled();
+            showSketchOf(static_cast<int>(i));
             schedulePlan();
         });
         grid->addWidget(column.used, row, 1 + static_cast<int>(i), Qt::AlignCenter);
@@ -194,8 +206,9 @@ QWidget* RockerDialog::buildDesigns()
                         tr("Tick if an anti-roll bar's drop link hangs off this rocker. Its "
                            "pickup is written only when the linkage template mounts the drop "
                            "link on the rocker."));
-                    connect(column.antiRollArm, &QCheckBox::toggled, this, [this] {
+                    connect(column.antiRollArm, &QCheckBox::toggled, this, [this, i] {
                         syncEnabled();
+                        showSketchOf(static_cast<int>(i));
                         schedulePlan();
                     });
                     grid->addWidget(column.antiRollArm, row, 1 + static_cast<int>(i),
@@ -209,7 +222,7 @@ QWidget* RockerDialog::buildDesigns()
         grid->addWidget(label, row, 0);
         for (std::size_t i = 0; i < m_columns.size(); ++i) {
             Column& column = m_columns[i];
-            QDoubleSpinBox* spin = number(field);
+            QDoubleSpinBox* spin = number(field, static_cast<int>(i));
             m_loading = true;
             spin->setValue(field.member(column.seed));
             m_loading = false;
@@ -233,6 +246,9 @@ QWidget* RockerDialog::buildPreview()
     auto* host = new QWidget(this);
     auto* layout = new QVBoxLayout(host);
     layout->setContentsMargins(8, 0, 0, 0);
+    // What the numbers mean, drawn with them.
+    m_sketch = new RockerSketch(host);
+    layout->addWidget(m_sketch, 2);
     layout->addWidget(new QLabel(tr("<b>What Place will do</b>"), host));
 
     m_summary = new QLabel(host);
@@ -268,6 +284,16 @@ std::vector<RockerDesign> RockerDialog::designs() const
     for (const Column& column : m_columns)
         if (column.used && column.used->isChecked()) out.push_back(designOf(column));
     return out;
+}
+
+void RockerDialog::showSketchOf(int column)
+{
+    if (m_loading || !m_sketch || column < 0 || column >= static_cast<int>(m_columns.size()))
+        return;
+    m_sketchColumn = column;
+    const CornerSpec& corner = m_templ.corners[static_cast<std::size_t>(column)];
+    m_sketch->setDesign(designOf(m_columns[static_cast<std::size_t>(column)]),
+                        corner.label.isEmpty() ? corner.token : corner.label);
 }
 
 void RockerDialog::syncEnabled()

@@ -35,12 +35,15 @@ struct RockerDesign {
     /// that is follows from its y: the far side comes from the mirror rule.
     Vec3 pivot{ 0.0, 150.0, 500.0 };
     /// The axis it turns about: its angle in top view from straight ahead
-    /// (+X), positive toward +Y, and its angle above the horizontal.
+    /// (+X), positive toward +Y, and its angle above the horizontal, up to
+    /// standing upright. The rocker turns with its axis as one body, so its
+    /// arms' angles mean the same however the axis lies.
     double axisYaw = 0.0;
     double axisPitch = 0.0;
 
     /// L1, the arm to the pushrod, and where it points: turned about the axis
-    /// from straight up. This is the angle that turns the whole rocker.
+    /// from the rocker's up -- straight up while the axis is level, tilted
+    /// with it when it is not. This is the angle that turns the whole rocker.
     double pushrodArm = 70.0;
     double pushrodArmAngle = 0.0;
 
