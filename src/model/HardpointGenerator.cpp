@@ -609,6 +609,88 @@ int DesignPlan::handEditedCount() const
                                           [](const DesignChange& c) { return c.handEdited; }));
 }
 
+void placeGeneratedPoints(DesignPlan* plan, const HardpointTable& points, const MirrorSpec& mirror,
+                          const HardpointTable& current, const HardpointTable& baseline)
+{
+    // Into the table: over a point of the same name, or on the end.
+    std::vector<int> generatedRows;
+    for (const Hardpoint& point : points.points) {
+        const int existing = plan->table.indexOf(point.name);
+        if (existing >= 0) {
+            Hardpoint& target = plan->table.points[static_cast<std::size_t>(existing)];
+            for (int k = 0; k < 3; ++k) target.coord[k] = point.coord[k];
+            // Generated here, so it is nobody's mirror any more.
+            target.mirrorOf.clear();
+            generatedRows.push_back(existing);
+        } else {
+            plan->table.points.push_back(point);
+            generatedRows.push_back(static_cast<int>(plan->table.points.size()) - 1);
+        }
+    }
+
+    // The far side through the project's own mirror rule, as the parts and the
+    // mechanism get theirs. Existing mirrors are brought up to date: the whole
+    // point of regenerating is that both sides move.
+    MirrorSpec both = mirror;
+    both.updateExisting = true;
+    both.skipMirrored = true;
+    const MirrorOutcome mirrored = mirrorHardpoints(plan->table, generatedRows, both);
+    plan->table = mirrored.table;
+    for (const QString& note : mirrored.notes) plan->warnings << note;
+
+    // What that does, point by point, against what the user has now.
+    QStringList touched;
+    for (const int row : generatedRows) {
+        const QString& name = plan->table.points[static_cast<std::size_t>(row)].name;
+        if (!touched.contains(name)) touched << name;
+    }
+    for (const int row : generatedRows) {
+        const QString far =
+            mirroredName(plan->table.points[static_cast<std::size_t>(row)].name, both);
+        if (!far.isEmpty() && plan->table.indexOf(far) >= 0 && !touched.contains(far)) touched << far;
+    }
+
+    for (const QString& name : touched) {
+        const Hardpoint* after = plan->table.find(name);
+        const Hardpoint* before = current.find(name);
+        DesignChange change;
+        change.name = name;
+        change.mirrored = after && after->isMirrored();
+        if (!before) {
+            change.kind = DesignChange::Kind::Added;
+        } else {
+            const Vec3 was(before->coord[0], before->coord[1], before->coord[2]);
+            const Vec3 now(after->coord[0], after->coord[1], after->coord[2]);
+            change.distance = distance(was, now);
+            change.kind = change.distance > 0.0 ? DesignChange::Kind::Moved
+                                                : DesignChange::Kind::Unchanged;
+
+            // Hand-edited is a point whose current value is the user's rather
+            // than the workbook's or the mirror rule's: that is what would be
+            // lost. It differs from what the workbook holds -- or the workbook
+            // never held it -- and it is not simply the mirror of its source.
+            if (change.kind == DesignChange::Kind::Moved) {
+                const Hardpoint* original = baseline.find(name);
+                const bool differs = !original || original->coord[0] != before->coord[0]
+                                     || original->coord[1] != before->coord[1]
+                                     || original->coord[2] != before->coord[2];
+                bool isItsSourcesMirror = false;
+                if (before->isMirrored()) {
+                    const Hardpoint* source = current.find(before->mirrorOf);
+                    const int axis = both.axis == MirrorAxis::X ? 0 : (both.axis == MirrorAxis::Y ? 1 : 2);
+                    isItsSourcesMirror = source != nullptr;
+                    for (int k = 0; isItsSourcesMirror && k < 3; ++k) {
+                        const double expected = k == axis ? -source->coord[k] : source->coord[k];
+                        isItsSourcesMirror = std::abs(expected - before->coord[k]) < 1e-9;
+                    }
+                }
+                change.handEdited = differs && !isItsSourcesMirror;
+            }
+        }
+        plan->changes.push_back(change);
+    }
+}
+
 DesignPlan planDesign(const DesignParameters& parameters, const LinkageTemplate& templ,
                       const MirrorSpec& mirror, const HardpointTable& current,
                       const HardpointTable& baseline, const MeshQuery* chassis)
@@ -638,7 +720,7 @@ DesignPlan planDesign(const DesignParameters& parameters, const LinkageTemplate&
         return plan;
     }
 
-    std::vector<int> generatedRows;
+    HardpointTable generatedPoints;
     for (const AxlePosition position : { AxlePosition::Front, AxlePosition::Rear }) {
         const AxleDesign& axle = parameters.axle(position);
         if (!axle.generate) continue;
@@ -666,21 +748,8 @@ DesignPlan planDesign(const DesignParameters& parameters, const LinkageTemplate&
         const MechanismTemplate names =
             instantiateMechanism(templ.mechanism, axle.corner, false, mirror, current);
         const HardpointTable points = bindGeneratedCorner(generated, names);
-
-        // Into the table: over a point of the same name, or on the end.
-        for (const Hardpoint& point : points.points) {
-            const int existing = plan.table.indexOf(point.name);
-            if (existing >= 0) {
-                Hardpoint& target = plan.table.points[static_cast<std::size_t>(existing)];
-                for (int k = 0; k < 3; ++k) target.coord[k] = point.coord[k];
-                // Generated here, so it is nobody's mirror any more.
-                target.mirrorOf.clear();
-                generatedRows.push_back(existing);
-            } else {
-                plan.table.points.push_back(point);
-                generatedRows.push_back(static_cast<int>(plan.table.points.size()) - 1);
-            }
-        }
+        generatedPoints.points.insert(generatedPoints.points.end(), points.points.begin(),
+                                      points.points.end());
 
         if (generated.advice.valid && generated.advice.distance > 0.05) {
             const QString pivot = mechanismName(names, generated.advice.pivot);
@@ -722,67 +791,7 @@ DesignPlan planDesign(const DesignParameters& parameters, const LinkageTemplate&
         }
     }
 
-    // The far side through the project's own mirror rule, as the parts and the
-    // mechanism get theirs. Existing mirrors are brought up to date: the whole
-    // point of regenerating is that both sides move.
-    MirrorSpec both = mirror;
-    both.updateExisting = true;
-    both.skipMirrored = true;
-    const MirrorOutcome mirrored = mirrorHardpoints(plan.table, generatedRows, both);
-    plan.table = mirrored.table;
-    for (const QString& note : mirrored.notes) plan.warnings << note;
-
-    // What that does, point by point, against what the user has now.
-    QStringList touched;
-    for (const int row : generatedRows) {
-        const QString& name = plan.table.points[static_cast<std::size_t>(row)].name;
-        if (!touched.contains(name)) touched << name;
-    }
-    for (const int row : generatedRows) {
-        const QString far =
-            mirroredName(plan.table.points[static_cast<std::size_t>(row)].name, both);
-        if (!far.isEmpty() && plan.table.indexOf(far) >= 0 && !touched.contains(far)) touched << far;
-    }
-
-    for (const QString& name : touched) {
-        const Hardpoint* after = plan.table.find(name);
-        const Hardpoint* before = current.find(name);
-        DesignChange change;
-        change.name = name;
-        change.mirrored = after && after->isMirrored();
-        if (!before) {
-            change.kind = DesignChange::Kind::Added;
-        } else {
-            const Vec3 was(before->coord[0], before->coord[1], before->coord[2]);
-            const Vec3 now(after->coord[0], after->coord[1], after->coord[2]);
-            change.distance = distance(was, now);
-            change.kind = change.distance > 0.0 ? DesignChange::Kind::Moved
-                                                : DesignChange::Kind::Unchanged;
-
-            // Hand-edited is a point whose current value is the user's rather
-            // than the workbook's or the mirror rule's: that is what would be
-            // lost. It differs from what the workbook holds -- or the workbook
-            // never held it -- and it is not simply the mirror of its source.
-            if (change.kind == DesignChange::Kind::Moved) {
-                const Hardpoint* original = baseline.find(name);
-                const bool differs = !original || original->coord[0] != before->coord[0]
-                                     || original->coord[1] != before->coord[1]
-                                     || original->coord[2] != before->coord[2];
-                bool isItsSourcesMirror = false;
-                if (before->isMirrored()) {
-                    const Hardpoint* source = current.find(before->mirrorOf);
-                    const int axis = both.axis == MirrorAxis::X ? 0 : (both.axis == MirrorAxis::Y ? 1 : 2);
-                    isItsSourcesMirror = source != nullptr;
-                    for (int k = 0; isItsSourcesMirror && k < 3; ++k) {
-                        const double expected = k == axis ? -source->coord[k] : source->coord[k];
-                        isItsSourcesMirror = std::abs(expected - before->coord[k]) < 1e-9;
-                    }
-                }
-                change.handEdited = differs && !isItsSourcesMirror;
-            }
-        }
-        plan.changes.push_back(change);
-    }
+    placeGeneratedPoints(&plan, generatedPoints, mirror, current, baseline);
     return plan;
 }
 

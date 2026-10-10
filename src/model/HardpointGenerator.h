@@ -194,6 +194,15 @@ struct DesignPlan {
     int handEditedCount() const;
 };
 
+/// Write @p points -- already named -- into @p plan's table, which starts as
+/// @p current: over a point of the same name, or on the end. Then their far
+/// side through @p mirror, and what all of that does to each point, against
+/// @p current and against @p baseline, which is what tells a hand edit about to
+/// be overwritten. What everything that generates named points shares:
+/// Generate from Design and the rocker.
+void placeGeneratedPoints(DesignPlan* plan, const HardpointTable& points, const MirrorSpec& mirror,
+                          const HardpointTable& current, const HardpointTable& baseline);
+
 /// Generate every axle @p parameters asks for into @p current, name the points
 /// through @p templ's mechanism, and put the far side through @p mirror.
 /// @p baseline is the table as the workbook holds it, which is how a point the
