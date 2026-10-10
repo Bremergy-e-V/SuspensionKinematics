@@ -37,7 +37,7 @@ public:
             .ribbon = { { .page = QStringLiteral("geometry"),
                           .group = tr("Wheels"),
                           .button = RibbonButton::Large,
-                          .order = 30 } },
+                          .order = 40 } },
             .run = [this] { addWheelsDialog(); },
             .enabledWhen = [this] { return m_context.hardpoints()->rowCount() > 0; },
         });
@@ -50,7 +50,7 @@ public:
                             "are not touched."),
             .ribbon = { { .page = QStringLiteral("geometry"),
                           .group = tr("Wheels"),
-                          .order = 40 } },
+                          .order = 50 } },
             .run = [this] { removeWheels(); },
             .enabledWhen = [this] { return !m_context.project().wheels().isEmpty(); },
         });
