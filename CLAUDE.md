@@ -413,6 +413,17 @@ a double wishbone. Do not put them back in.
   geometry -- an upright in the model -- is detected and those pivots go on their
   lines with a warning. A ray that misses says so; nothing is invented.
 
+## Distance to the chassis
+
+**Hardpoints > Distance to Chassis** puts the selected point a given distance
+off the imported chassis, moved square to the surface -- the shortest move
+that does it. `offsetFromChassis()` (`src/model/ChassisOffset.*`, core, tested)
+repeats the move from where it lands until the distance holds, because the
+surface square under a point is not always square under where it ends up; a
+point lying on the surface is refused rather than given a side. The move is
+`HardpointModel::movePoint()`, so it is an ordinary edit, and a point of a
+rigid rocker takes the rocker with it.
+
 The table itself (`src/app/HardpointPanel.*`, `HardpointModel.*`,
 `HardpointDelegates.*`) draws its colours from the palette rather than carrying a
 theme, freezes the number and name columns behind a second view of the same

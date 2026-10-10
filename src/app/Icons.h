@@ -52,6 +52,7 @@ enum class Icon {
     Restore,
     RowInsertBottom,
     RowRemove,
+    RulerMeasure,
     Sphere,
     SteeringWheel,
     Table,

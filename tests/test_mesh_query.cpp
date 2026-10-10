@@ -1,4 +1,5 @@
 #include "geom/MeshQuery.h"
+#include "model/ChassisOffset.h"
 
 #include <QRandomGenerator>
 #include <QTest>
@@ -83,6 +84,10 @@ private slots:
     void distanceIsToTheNearestFeature();
     void anEmptyMeshAnswersNothing();
     void aDeepTreeAgreesWithBruteForce();
+    void theNearestPointIsOnTheSurface();
+    void aPointIsMovedSquareToTheChassis();
+    void aPointOffACornerSettlesAtTheDistance();
+    void aPointOnTheSurfaceIsRefused();
 };
 
 void TestMeshQuery::aRayMeetsTheNearFaceFirst()
@@ -168,6 +173,57 @@ void TestMeshQuery::aDeepTreeAgreesWithBruteForce()
         QVERIFY(hit.has_value());
         QVERIFY(query.distanceTo(hit->point) < 1e-6);
     }
+}
+
+void TestMeshQuery::theNearestPointIsOnTheSurface()
+{
+    const MeshQuery query(box(Vec3(-10, -10, -10), Vec3(10, 10, 10)));
+    const std::optional<Vec3> nearest = query.nearestPoint(Vec3(3, 25, -4));
+    QVERIFY(nearest.has_value());
+    QCOMPARE(nearest->x, 3.0);
+    QCOMPARE(nearest->y, 10.0);
+    QCOMPARE(nearest->z, -4.0);
+    QVERIFY(!MeshQuery().nearestPoint(Vec3()).has_value());
+}
+
+void TestMeshQuery::aPointIsMovedSquareToTheChassis()
+{
+    const MeshQuery chassis(box(Vec3(-10, -10, -10), Vec3(10, 10, 10)));
+
+    // 15 mm off the +y face, asked for 40: straight out along y, nothing else.
+    const ChassisOffset out = offsetFromChassis(chassis, Vec3(3, 25, -4), 40.0);
+    QVERIFY2(out.position.has_value(), qPrintable(out.error));
+    QCOMPARE(out.distanceBefore, 15.0);
+    QVERIFY(std::abs(out.position->x - 3.0) < 1e-9);
+    QVERIFY(std::abs(out.position->y - 50.0) < 1e-6);
+    QVERIFY(std::abs(out.position->z + 4.0) < 1e-9);
+
+    // And in toward it, down to touching.
+    const ChassisOffset in = offsetFromChassis(chassis, Vec3(3, 25, -4), 0.0);
+    QVERIFY2(in.position.has_value(), qPrintable(in.error));
+    QVERIFY(std::abs(in.position->y - 10.0) < 1e-6);
+
+    QVERIFY(!offsetFromChassis(chassis, Vec3(3, 25, -4), -1.0).position.has_value());
+    QVERIFY(!offsetFromChassis(MeshQuery(), Vec3(3, 25, -4), 5.0).position.has_value());
+}
+
+void TestMeshQuery::aPointOffACornerSettlesAtTheDistance()
+{
+    // Off the box's edge, where the nearest feature is the edge itself: moved
+    // away from it, and the distance holds wherever it ends up.
+    const MeshQuery chassis(box(Vec3(-10, -10, -10), Vec3(10, 10, 10)));
+    const ChassisOffset out = offsetFromChassis(chassis, Vec3(0, 12, 13), 20.0);
+    QVERIFY2(out.position.has_value(), qPrintable(out.error));
+    QVERIFY(std::abs(chassis.distanceTo(*out.position) - 20.0) < 1e-6);
+    QVERIFY(out.position->y > 12.0 && out.position->z > 13.0);
+}
+
+void TestMeshQuery::aPointOnTheSurfaceIsRefused()
+{
+    const MeshQuery chassis(box(Vec3(-10, -10, -10), Vec3(10, 10, 10)));
+    const ChassisOffset out = offsetFromChassis(chassis, Vec3(3, 10, -4), 20.0);
+    QVERIFY(!out.position.has_value());
+    QVERIFY(!out.error.isEmpty());
 }
 
 QTEST_APPLESS_MAIN(TestMeshQuery)

@@ -64,6 +64,7 @@ constexpr IconEntry kIcons[] = {
     { Icon::Restore, "restore" },
     { Icon::RowInsertBottom, "row-insert-bottom" },
     { Icon::RowRemove, "row-remove" },
+    { Icon::RulerMeasure, "ruler-measure" },
     { Icon::Sphere, "sphere" },
     { Icon::SteeringWheel, "steering-wheel" },
     { Icon::Table, "table" },

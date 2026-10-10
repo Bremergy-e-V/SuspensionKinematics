@@ -147,6 +147,8 @@ add_library(suspkin_core STATIC
     src/model/DesignParameters.cpp
     src/model/HardpointGenerator.h
     src/model/HardpointGenerator.cpp
+    src/model/ChassisOffset.h
+    src/model/ChassisOffset.cpp
     src/io/LinkageTemplate.h
     src/io/LinkageTemplate.cpp
     src/io/XlsxHardpoints.h
@@ -269,6 +271,7 @@ qt_add_executable(suspkin
     src/app/features/SharedCommands.h
     src/app/features/HardpointWorkbookFeature.cpp
     src/app/features/HardpointsFeature.cpp
+    src/app/features/ChassisDistanceFeature.cpp
     src/app/features/GenerateFeature.cpp
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
@@ -404,7 +407,7 @@ set(SUSPKIN_ICON_NAMES
     file-spreadsheet file-type-csv file-x flip-horizontal focus-centered
     folder-open folder-plus folder-search forms history info-circle info-square-rounded
     layout-dashboard license line list-details logout refresh restore row-insert-bottom
-    row-remove sphere steering-wheel table table-export table-minus table-plus
+    row-remove ruler-measure sphere steering-wheel table table-export table-minus table-plus
     tag template trash triangles vector wand wheel x)
 set(SUSPKIN_ICONS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons")
 set(SUSPKIN_ICONS "")
