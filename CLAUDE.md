@@ -365,6 +365,14 @@ implicitly shared between states, so a step costs one copy of the rows.
 `docs/HARDPOINT_GENERATOR_PLAN.md`: vehicle targets (`DesignParameters`, stored in
 the manifest under `design`) in, roles out. Pure and in the core.
 
+**It builds a double wishbone corner and nothing else** -- the wishbones, the
+upright, the steering. The pushrod, the rocker, the damper and the anti-roll bar
+are packaging, not a consequence of the targets, and they were taken out on
+2026-10-10: the rocker is a part of its own (see "The rocker as a part"), the
+pushrod's outer end and the bar are placed by hand. That is also what keeps the
+generator working whatever else a template describes, as long as the corner is
+a double wishbone. Do not put them back in.
+
 - **It produces roles, never names.** `bindGeneratedCorner()` names them through
   the project's own `MechanismTemplate`, and a role the template does not name is
   not written. `planDesign()` does the rest: every axle asked for, the far side
@@ -396,20 +404,56 @@ the manifest under `design`) in, roles out. Pure and in the core.
   stated angles would outrank the wheel axis just placed, and the scrub, trail
   and roll centre built off the generator's camber would come out wrong. An axle
   with none keeps reading its angles off the new points.
-- **The rocker group and the bar are generated from placement inputs**, per
-  axle and each behind its own switch (`generateRocker`, `generateAntiRollBar`),
-  so a hand-placed rocker is left alone. The one target among them is the
-  installation ratio: the rocker's rate comes from `CornerSolver` on the corner
-  generated so far, and the damper arm is the ratio over it, with the damper
-  square to its arm. A role that was not placed is not in
-  `GeneratedCorner::placed` and `bindGeneratedCorner()` does not write it.
-  `planDesign()` names points through the table-aware `instantiateMechanism()`,
-  so a workbook still on the bar's former names gets those points moved, not a
-  second bar.
+- `planDesign()` names points through the table-aware `instantiateMechanism()`,
+  so a workbook still on a point's former name gets that point moved, not a
+  second one beside it. Folding named points into the table, mirroring them and
+  saying what that does is `placeGeneratedPoints()`, which the rocker shares.
 - `src/geom/MeshQuery.*` (a BVH, ray casting and unsigned distance) is what puts
   inboard pivots on the imported chassis. A ball joint already inside the
   geometry -- an upright in the model -- is detected and those pivots go on their
   lines with a warning. A ray that misses says so; nothing is invented.
+
+## The rocker as a part
+
+**Linkage > Rocker** (`src/model/RockerDesign.*`, core, tested;
+`src/app/RockerDialog.*`, `features/RockerFeature.cpp`) designs each corner's
+rocker and damper from the 2025 car's chalk-board sketch: a pivot and an axis
+(yaw, tilt), L1 to the pushrod and the angle that turns it from straight up, L2
+to the damper's eye at an angle from L1, beta at the eye and Ld for the damper,
+and an optional L3 for a drop link. Every arm lies in the plane square to the
+axis, and every angle is positive turning *inboard*, so one set of numbers means
+the same rocker on either side. The pushrod itself -- its length and alpha -- is
+not set here: its outer end is on a wishbone and is placed by hand.
+
+- The designs are stored in the manifest under `rockers`, one per corner. Their
+  points go into the table through `planRockers()` -> `placeGeneratedPoints()`,
+  previewed and one-shot like Generate, and as one undo step. The designs are
+  *not* in `EditState`; like the generator's targets they are saved when the
+  dialog is accepted.
+- **A designed rocker is one rigid part.** `rockerGroups()` names, per corner
+  and side, the pivot, its axis point, the ends of L1, L2 and L3 and *both* ends
+  of the damper; `ProjectSession::applyRockerGroups()` hands them to
+  `HardpointModel::setRigidGroups()` on every resolve. Moving any of them -- a
+  cell, an arrow, the X/Y/Z field, `movePoint()` -- moves all of them by the
+  same amount, still as one `coordinateChanged()` and one step. Rotating it is
+  the L1 angle in the dialog.
+- The table is where a moved rocker's position lives. The dialog starts a
+  designed corner from `followTable()` (the stored shape, the pivot where the
+  table has it now), and an undesigned one from `measureRocker()`, which reads
+  an existing hand-placed rocker back as a design -- so ticking it does not
+  first throw it somewhere else. Placing what was read back moves nothing; a
+  test says so.
+
+## Distance to the chassis
+
+**Hardpoints > Distance to Chassis** puts the selected point a given distance
+off the imported chassis, moved square to the surface -- the shortest move
+that does it. `offsetFromChassis()` (`src/model/ChassisOffset.*`, core, tested)
+repeats the move from where it lands until the distance holds, because the
+surface square under a point is not always square under where it ends up; a
+point lying on the surface is refused rather than given a side. The move is
+`HardpointModel::movePoint()`, so it is an ordinary edit, and a point of a
+rigid rocker takes the rocker with it.
 
 The table itself (`src/app/HardpointPanel.*`, `HardpointModel.*`,
 `HardpointDelegates.*`) draws its colours from the palette rather than carrying a
@@ -831,7 +875,9 @@ src/model/    Hardpoint, HardpointTable, hardpoint mirroring, what each point
               resolves to, where the wheel models are placed, the solver and
               its sweeps, the Simulation that binds every axle and poses the
               car, the generator that runs it the other way -- design
-              targets to hardpoints -- and the undo history of the points
+              targets to hardpoints -- the rocker designed as a part, putting
+              a point a distance off the chassis, and the undo history of the
+              points
 src/io/       STL and STEP readers behind importMeshFile(), a minimal ZIP
               reader/rewriter, the hardpoint workbook reader/writer, and the
               linkage template reader/writer

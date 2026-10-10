@@ -4,6 +4,7 @@
 #include "model/Hardpoint.h"
 #include "model/HardpointConfig.h"
 #include "model/HardpointMirror.h"
+#include "model/RockerDesign.h"
 #include "model/Sweep.h"
 #include "model/Wheels.h"
 #include "render/Camera.h"
@@ -16,6 +17,7 @@
 #include <QStringList>
 
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace suspkin {
@@ -68,6 +70,9 @@ struct ViewState {
     /// fit the camera to the geometry instead of restoring a meaningless one.
     bool cameraValid = false;
     DisplayMode displayMode = DisplayMode::Solid;
+    /// Whether the imported chassis is drawn. Hidden, it is still there for the
+    /// generator to put pivots on; it is only out of the way of the suspension.
+    bool chassisVisible = true;
     bool labelsVisible = true;
     /// Whether the parts the linkage template describes are drawn between the
     /// markers. On by default: a table of points with nothing joining them is
@@ -283,6 +288,12 @@ public:
     const std::optional<DesignParameters>& design() const { return m_design; }
     void setDesign(const DesignParameters& design) { m_design = design; }
 
+    /// The rockers designed as parts of their own, one per corner at most.
+    /// Their points are in the table like any other; this is their shape --
+    /// the arms and angles -- and what makes their points move as one.
+    const std::vector<RockerDesign>& rockers() const { return m_rockers; }
+    void setRockers(std::vector<RockerDesign> rockers) { m_rockers = std::move(rockers); }
+
     /// Each axle's static camber and toe, by corner token, for the axles whose
     /// angles the user has stated -- Lotus's Set Static Angles. An axle that is
     /// not here has them read off its hardpoints, the way every project did
@@ -323,6 +334,7 @@ private:
     WindowState m_window;
     MirrorSpec m_mirror;
     std::optional<DesignParameters> m_design;
+    std::vector<RockerDesign> m_rockers;
     QHash<QString, StaticAlignment> m_alignment;
     QString m_lastGeometryDirectory;
     QString m_lastHardpointDirectory;

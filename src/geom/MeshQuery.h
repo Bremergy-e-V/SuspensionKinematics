@@ -43,6 +43,9 @@ public:
     std::optional<RayHit> castRay(const Vec3& origin, const Vec3& direction,
                                   double maxDistance = std::numeric_limits<double>::infinity()) const;
 
+    /// The point on the surface nearest @p point. Empty for an empty mesh.
+    std::optional<Vec3> nearestPoint(const Vec3& point) const;
+
     /// How far @p point is from the nearest point on the surface. Unsigned: an
     /// STL has no reliable inside. Infinite for an empty mesh.
     double distanceTo(const Vec3& point) const;

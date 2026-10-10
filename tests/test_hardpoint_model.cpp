@@ -6,6 +6,8 @@
 #include <QSortFilterProxyModel>
 #include <QTest>
 
+#include <cmath>
+
 using namespace suspkin;
 
 namespace {
@@ -54,6 +56,8 @@ private slots:
     void aCoordinateIsStillHandedOverUnrounded();
     void clearingTheTableClearsWhatDescribedIt();
     void aSolvedPointTheSolveDoesNotMoveSaysSo();
+    void aPointIsMovedAsOneEdit();
+    void aRigidPartMovesAsOne();
 
 private:
     QModelIndex cell(int row, int column) const { return m_model->index(row, column); }
@@ -362,6 +366,47 @@ void TestHardpointModel::aSolvedPointTheSolveDoesNotMoveSaysSo()
 
     m_model->setSolvedPoints(std::nullopt);
     QVERIFY(!m_model->isUnsolved(1));
+}
+
+void TestHardpointModel::aPointIsMovedAsOneEdit()
+{
+    QSignalSpy moved(m_model, &HardpointModel::coordinateChanged);
+    QVERIFY(m_model->movePoint(0, Vec3(-2070.0, 271.5, 120.25)));
+    QCOMPARE(moved.size(), 1);
+    const Hardpoint& point = m_model->table().points[0];
+    QCOMPARE(point.coord[0], -2070.0);
+    QCOMPARE(point.coord[1], 271.5); // untouched, exactly
+    QCOMPARE(point.coord[2], 120.25);
+
+    // Where it already is: nothing to say.
+    QVERIFY(!m_model->movePoint(0, Vec3(-2070.0, 271.5, 120.25)));
+    QCOMPARE(moved.size(), 1);
+}
+
+void TestHardpointModel::aRigidPartMovesAsOne()
+{
+    m_model->setRigidGroups({ { QStringLiteral("F_LCA_IF"), QStringLiteral("F_LCA_O"),
+                                QStringLiteral("F_Not_In_The_Table") } });
+    QCOMPARE(m_model->rigidPartners(0), QList<int>{ 1 });
+
+    // A typed coordinate: the partner moves by as much, on that axis alone,
+    // and it is still one edit.
+    QSignalSpy moved(m_model, &HardpointModel::coordinateChanged);
+    QVERIFY(m_model->setData(cell(0, HardpointModel::ZColumn), 128.0, Qt::EditRole));
+    QCOMPARE(moved.size(), 1);
+    QCOMPARE(m_model->table().points[0].coord[2], 128.0);
+    QCOMPARE(m_model->table().points[1].coord[2], 120.0);
+    QCOMPARE(m_model->table().points[1].coord[0], -2000.0);
+
+    // A whole move, the same.
+    QVERIFY(m_model->movePoint(1, Vec3(-1990.0, 560.0, 120.0)));
+    QCOMPARE(moved.size(), 2);
+    QVERIFY(std::abs(m_model->table().points[0].coord[0] + 2058.622) < 1e-9);
+
+    // Out of the group, a point moves alone again.
+    m_model->setRigidGroups({});
+    QVERIFY(m_model->setData(cell(0, HardpointModel::ZColumn), 100.0, Qt::EditRole));
+    QCOMPARE(m_model->table().points[1].coord[2], 120.0);
 }
 
 QTEST_MAIN(TestHardpointModel)

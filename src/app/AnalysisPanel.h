@@ -159,8 +159,10 @@ signals:
 
 private:
     void buildUi();
-    /// The row that says what the plot shows: which curve, which axles, which
-    /// wheels.
+    /// The row that picks which curve is plotted. A row of its own, so the
+    /// toggles never squeeze the curve's name out of sight.
+    QHBoxLayout* buildCurveRow();
+    /// The row that says whose curves are drawn: which axles, which wheels.
     QHBoxLayout* buildShowRow();
     /// One checkbox per axle, in the order the axles are listed.
     void rebuildAxleToggles();

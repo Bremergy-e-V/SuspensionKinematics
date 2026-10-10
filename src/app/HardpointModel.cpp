@@ -408,16 +408,77 @@ bool HardpointModel::setCoordinate(const QModelIndex& index, const QVariant& val
     const double parsed = value.toDouble(&ok);
     if (!ok) return false;
 
-    double& stored = m_table.points[static_cast<std::size_t>(index.row())]
-                         .coord[axisOf(index.column())];
+    const int axis = axisOf(index.column());
+    const double stored = m_table.points[static_cast<std::size_t>(index.row())].coord[axis];
     // Returning false for a no-op keeps the document from being marked dirty by
     // someone opening an editor and pressing Enter.
     if (stored == parsed) return false;
 
-    stored = parsed;
-    emit dataChanged(index, index, { Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole });
+    if (rigidPartners(index.row()).isEmpty()) {
+        // The value typed, not the old one plus a difference: the two can
+        // differ in the last bit, and that would be an edit nobody made.
+        m_table.points[static_cast<std::size_t>(index.row())].coord[axis] = parsed;
+        emit dataChanged(index, index, { Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole });
+    } else {
+        Vec3 delta;
+        (axis == 0 ? delta.x : axis == 1 ? delta.y : delta.z) = parsed - stored;
+        translateWithPartners(index.row(), delta);
+        m_table.points[static_cast<std::size_t>(index.row())].coord[axis] = parsed;
+    }
     emit coordinateChanged(index.row());
     return true;
+}
+
+bool HardpointModel::movePoint(int row, const Vec3& to)
+{
+    if (row < 0 || row >= rowCount()) return false;
+    const Hardpoint& point = m_table.points[static_cast<std::size_t>(row)];
+    const Vec3 delta(to.x - point.coord[0], to.y - point.coord[1], to.z - point.coord[2]);
+    if (delta.x == 0.0 && delta.y == 0.0 && delta.z == 0.0) return false;
+
+    translateWithPartners(row, delta);
+    // Exactly where it was asked to go, for the same reason as a typed value.
+    Hardpoint& moved = m_table.points[static_cast<std::size_t>(row)];
+    moved.coord[0] = to.x;
+    moved.coord[1] = to.y;
+    moved.coord[2] = to.z;
+    emit coordinateChanged(row);
+    return true;
+}
+
+void HardpointModel::translateWithPartners(int row, const Vec3& delta)
+{
+    QList<int> rows = rigidPartners(row);
+    rows.prepend(row);
+    const double step[3] = { delta.x, delta.y, delta.z };
+    for (const int moved : std::as_const(rows)) {
+        Hardpoint& point = m_table.points[static_cast<std::size_t>(moved)];
+        // An axis the move does not touch is left exactly as it was.
+        for (int k = 0; k < 3; ++k)
+            if (step[k] != 0.0) point.coord[k] += step[k];
+        emit dataChanged(index(moved, XColumn), index(moved, ZColumn),
+                         { Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole });
+    }
+}
+
+void HardpointModel::setRigidGroups(std::vector<QStringList> groups)
+{
+    m_rigidGroups = std::move(groups);
+}
+
+QList<int> HardpointModel::rigidPartners(int row) const
+{
+    QList<int> partners;
+    if (row < 0 || row >= rowCount()) return partners;
+    const QString& name = m_table.points[static_cast<std::size_t>(row)].name;
+    for (const QStringList& group : m_rigidGroups) {
+        if (!group.contains(name)) continue;
+        for (const QString& member : group) {
+            const int other = m_table.indexOf(member);
+            if (other >= 0 && other != row && !partners.contains(other)) partners << other;
+        }
+    }
+    return partners;
 }
 
 bool HardpointModel::setConfigField(int row, int column, const QVariant& value)

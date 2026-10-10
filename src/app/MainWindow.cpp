@@ -141,6 +141,10 @@ void MainWindow::buildHardpointDock()
         const HardpointTable& table = hardpoints()->table();
         if (row < 0 || row >= static_cast<int>(table.points.size())) return;
         m_viewport->moveHardpoint(row, table.points[static_cast<std::size_t>(row)].toVector());
+        // A point of a rigid part took the rest of the part with it.
+        for (const int partner : hardpoints()->rigidPartners(row))
+            m_viewport->moveHardpoint(partner,
+                                      table.points[static_cast<std::size_t>(partner)].toVector());
         // A coordinate is a link length, so the mechanism has to be measured
         // again. Posing it again takes the wheels with it.
         m_session->resolveMechanism();

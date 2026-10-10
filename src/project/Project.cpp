@@ -432,6 +432,7 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
         view.value(QStringLiteral("displayMode")).toString() == QLatin1String("triangles")
             ? DisplayMode::Triangles
             : DisplayMode::Solid;
+    project.m_view.chassisVisible = view.value(QStringLiteral("chassis")).toBool(true);
     project.m_view.labelsVisible = view.value(QStringLiteral("labels")).toBool(true);
     project.m_view.linksVisible = view.value(QStringLiteral("links")).toBool(true);
     project.m_view.wheelsVisible = view.value(QStringLiteral("wheels")).toBool(true);
@@ -493,6 +494,7 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
         project.m_mirror = mirrorFromJson(root.value(QStringLiteral("mirror")).toObject());
     if (root.contains(QStringLiteral("design")))
         project.m_design = designParametersFromJson(root.value(QStringLiteral("design")).toObject());
+    project.m_rockers = rockerDesignsFromJson(root.value(QStringLiteral("rockers")).toArray());
 
     // Per axle, and only the axles that have been given angles: one that is not
     // here reads them off its hardpoints. An entry missing either number is not
@@ -571,6 +573,7 @@ bool Project::save(QString* error) const
     view.insert(QStringLiteral("displayMode"), m_view.displayMode == DisplayMode::Triangles
                                                    ? QStringLiteral("triangles")
                                                    : QStringLiteral("solid"));
+    view.insert(QStringLiteral("chassis"), m_view.chassisVisible);
     view.insert(QStringLiteral("labels"), m_view.labelsVisible);
     view.insert(QStringLiteral("links"), m_view.linksVisible);
     view.insert(QStringLiteral("wheels"), m_view.wheelsVisible);
@@ -618,6 +621,7 @@ bool Project::save(QString* error) const
 
     root.insert(QStringLiteral("mirror"), mirrorToJson(m_mirror));
     if (m_design) root.insert(QStringLiteral("design"), designParametersToJson(*m_design));
+    if (!m_rockers.empty()) root.insert(QStringLiteral("rockers"), rockerDesignsToJson(m_rockers));
     if (!m_alignment.isEmpty()) {
         QJsonObject alignment;
         for (auto it = m_alignment.begin(); it != m_alignment.end(); ++it) {

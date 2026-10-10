@@ -240,9 +240,16 @@ std::optional<RayHit> MeshQuery::castRay(const Vec3& origin, const Vec3& directi
 
 double MeshQuery::distanceTo(const Vec3& point) const
 {
-    if (isEmpty()) return std::numeric_limits<double>::infinity();
+    const std::optional<Vec3> nearest = nearestPoint(point);
+    return nearest ? distance(point, *nearest) : std::numeric_limits<double>::infinity();
+}
+
+std::optional<Vec3> MeshQuery::nearestPoint(const Vec3& point) const
+{
+    if (isEmpty()) return std::nullopt;
 
     double best = std::numeric_limits<double>::infinity();
+    Vec3 bestPoint;
     std::vector<std::pair<double, std::uint32_t>> stack;
     stack.reserve(64);
     stack.push_back({ boxDistanceSquared(point, m_nodes[0].min, m_nodes[0].max), 0 });
@@ -257,7 +264,11 @@ double MeshQuery::distanceTo(const Vec3& point) const
             for (std::uint32_t i = node.first; i < node.first + node.count; ++i) {
                 const std::uint32_t t = m_order[i];
                 const Vec3 nearest = closestOnTriangle(point, corner(t, 0), corner(t, 1), corner(t, 2));
-                best = std::min(best, distanceSquared(point, nearest));
+                const double squared = distanceSquared(point, nearest);
+                if (squared < best) {
+                    best = squared;
+                    bestPoint = nearest;
+                }
             }
             continue;
         }
@@ -276,7 +287,7 @@ double MeshQuery::distanceTo(const Vec3& point) const
             stack.push_back({ db, node.first + 1 });
         }
     }
-    return std::sqrt(best);
+    return bestPoint;
 }
 
 } // namespace suspkin

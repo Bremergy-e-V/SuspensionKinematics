@@ -389,6 +389,16 @@ stack behind them in one go.
     1e-6. What settled it was a real workbook designed to 10 mm that the old
     construction read as 6.3; see `KINEMATICS_PLAN.md`'s progress log.
 
+- **2026-10-10** -- **Steps 13 and 14 taken out again.** The pushrod, the
+  rocker, the damper and the anti-roll bar are packaging, and generating them
+  from the vehicle targets bred numbers nobody could set by intuition. The
+  generator builds the double wishbone and nothing else, so it keeps working
+  whatever a template adds around it. The rocker is now a part of its own --
+  Linkage > Rocker, `RockerDesign` -- designed by its arms and angles and moved
+  as one; the pushrod's outer end and the bar are placed by hand.
+  `DesignMounts`, `GeneratedCorner::rockerRate` and `damperArm`, and the ten
+  roles are gone. The entry below is history.
+
 - **2026-09-27** -- Issue #9: the generator now places the pushrod, the rocker,
   the damper and the anti-roll bar (steps 13 and 14, and rule 7 rewritten).
   `DesignRole` gained their ten roles, `GeneratedCorner::placed` says which
