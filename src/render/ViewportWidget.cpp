@@ -178,6 +178,14 @@ void ViewportWidget::setMeshTransform(const QMatrix4x4& transform)
     update();
 }
 
+void ViewportWidget::setMeshVisible(bool visible)
+{
+    if (m_meshVisible == visible) return;
+    m_meshVisible = visible;
+    update();
+    emit viewChanged();
+}
+
 void ViewportWidget::setHardpoints(const HardpointTable& table)
 {
     m_hardpoints.clear();
@@ -436,7 +444,9 @@ void ViewportWidget::fitToView()
 {
     // Everything on screen, not just the mesh: hardpoints are often imported on
     // their own, and they can also reach outside the geometry that is loaded.
-    Aabb bounds = m_mesh.bounds;
+    // A hidden chassis is not on screen, so framing it would only leave the
+    // suspension small in the middle of nothing.
+    Aabb bounds = m_meshVisible ? m_mesh.bounds : Aabb{};
     if (!m_hardpointBounds.isEmpty()) {
         bounds.expand(m_hardpointBounds.min);
         bounds.expand(m_hardpointBounds.max);
@@ -605,7 +615,7 @@ void ViewportWidget::renderScene()
     // drawn twice, so no depth biasing is needed.
     const bool wireframe = (m_mode == DisplayMode::Triangles);
 
-    if (m_gpu.isValid()) {
+    if (m_meshVisible && m_gpu.isValid()) {
         // The geometry has a model matrix of its own, the way each wheel does:
         // it is the chassis, and a rolled body takes it along.
         const QMatrix4x4 meshModelView = view * m_meshTransform;

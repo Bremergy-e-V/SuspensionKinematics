@@ -61,6 +61,43 @@ public:
             .run = [this] { removeChassis(); },
             .enabledWhen = [this] { return !m_context.project().geometry().isEmpty(); },
         });
+
+        // Out of the way of the suspension, not out of the project: hidden, the
+        // generator still puts pivots on it.
+        m_show = commands.add({
+            .id = QStringLiteral("geometry.showChassis"),
+            .text = tr("Show &Chassis"),
+            .icon = Icon::Car,
+            .iconText = tr("Chassis"),
+            .shortcut = QKeySequence(QStringLiteral("Ctrl+Shift+C")),
+            .statusTip = tr("Draw the imported chassis. Hide it to see the suspension on its own."),
+            .checkable = true,
+            .checkedByDefault = true,
+            .ribbon = { { .page = QStringLiteral("geometry"), .group = tr("Chassis"), .order = 30 },
+                        { .page = QStringLiteral("view"), .group = tr("Show"), .order = 40 } },
+            .onToggled = [this](bool on) { m_context.viewport()->setMeshVisible(on); },
+            .enabledWhen = [this] { return m_context.viewport()->hasMesh(); },
+        });
+    }
+
+    void windowReady() override
+    {
+        // An import shows the chassis it brought in, so the command follows the
+        // viewport rather than only the other way round.
+        QObject::connect(m_context.viewport(), &ViewportWidget::viewChanged, m_show, [this] {
+            m_show->setChecked(m_context.viewport()->meshVisible());
+        });
+    }
+
+    void collectViewState(ViewState& view) const override
+    {
+        view.chassisVisible = m_context.viewport()->meshVisible();
+    }
+
+    void applyViewState(const ViewState& view) override
+    {
+        m_show->setChecked(view.chassisVisible);
+        m_context.viewport()->setMeshVisible(view.chassisVisible);
     }
 
 private:
@@ -91,6 +128,7 @@ private:
     }
 
     AppContext& m_context;
+    QAction* m_show = nullptr;
 };
 
 } // namespace
@@ -105,6 +143,9 @@ void importChassisFile(AppContext& context, const QString& path)
     }
 
     context.viewport()->setMesh(std::move(model->mesh), model->edges);
+    // A chassis imported while the last one was hidden would otherwise look
+    // like an import that did nothing.
+    context.viewport()->setMeshVisible(true);
     context.viewport()->fitToView();
     context.refreshCommands();
 }

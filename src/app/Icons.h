@@ -21,6 +21,7 @@ enum class Icon {
     ArrowBackUp,
     ArrowForwardUp,
     Braces,
+    Car,
     ChartLine,
     ChevronDown,
     ChevronUp,

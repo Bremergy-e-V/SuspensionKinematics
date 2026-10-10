@@ -33,6 +33,7 @@ constexpr IconEntry kIcons[] = {
     { Icon::ArrowBackUp, "arrow-back-up" },
     { Icon::ArrowForwardUp, "arrow-forward-up" },
     { Icon::Braces, "braces" },
+    { Icon::Car, "car" },
     { Icon::ChartLine, "chart-line" },
     { Icon::ChevronDown, "chevron-down" },
     { Icon::ChevronUp, "chevron-up" },

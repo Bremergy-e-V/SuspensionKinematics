@@ -68,6 +68,9 @@ struct ViewState {
     /// fit the camera to the geometry instead of restoring a meaningless one.
     bool cameraValid = false;
     DisplayMode displayMode = DisplayMode::Solid;
+    /// Whether the imported chassis is drawn. Hidden, it is still there for the
+    /// generator to put pivots on; it is only out of the way of the suspension.
+    bool chassisVisible = true;
     bool labelsVisible = true;
     /// Whether the parts the linkage template describes are drawn between the
     /// markers. On by default: a table of points with nothing joining them is

@@ -107,6 +107,7 @@ void TestProject::roundTripsEverythingItHolds()
     view.labelsVisible = false;
     view.linksVisible = false;
     view.wheelsVisible = false;
+    view.chassisVisible = false;
     view.selectedHardpoint = 4;
     // In the order they were picked, which is not row order: a chain of points
     // picked for a new part is picked the way it is drawn.
@@ -183,6 +184,7 @@ void TestProject::roundTripsEverythingItHolds()
     QCOMPARE(reopened->view().labelsVisible, false);
     QCOMPARE(reopened->view().linksVisible, false);
     QCOMPARE(reopened->view().wheelsVisible, false);
+    QCOMPARE(reopened->view().chassisVisible, false);
     QCOMPARE(reopened->view().selectedHardpoint, 4);
     QCOMPARE(reopened->view().selection, (QList<int>{ 7, 4, 2 }));
     // Binary, with an embedded NUL: base64 in the manifest has to survive it.
