@@ -149,6 +149,18 @@ QWidget* CoordinateDelegate::createEditor(QWidget* parent, const QStyleOptionVie
     return spin;
 }
 
+void CoordinateDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
+                               const QModelIndex& index) const
+{
+    QStyleOptionViewItem opt = option;
+    if (index.data(HardpointModel::GhostRole).toBool()) {
+        const QColor faded = opt.palette.color(QPalette::Disabled, QPalette::Text);
+        opt.palette.setColor(QPalette::Text, faded);
+        opt.palette.setColor(QPalette::HighlightedText, faded);
+    }
+    QStyledItemDelegate::paint(painter, opt, index);
+}
+
 // ---------------------------------------------------------------------------
 // The identifier column
 // ---------------------------------------------------------------------------

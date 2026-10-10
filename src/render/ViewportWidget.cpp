@@ -41,6 +41,9 @@ const QVector4D kEdgeColor{ 0.82f, 0.86f, 0.92f, 0.75f };
 // Hardpoint markers. Amber reads as "annotation" next to the neutral grey of
 // imported geometry, and neither colour is one a shaded surface produces.
 const QVector3D kPointColor{ 1.00f, 0.74f, 0.28f };
+/// A ghost -- the mirror of another point -- in the marker colour, faded
+/// toward the background: there, but not a thing to grab.
+const QVector3D kGhostColor{ 0.55f, 0.47f, 0.33f };
 const QVector3D kHoverColor{ 1.00f, 0.90f, 0.62f };
 const QVector3D kSelectedColor{ 0.42f, 0.86f, 1.00f };
 const QVector3D kPointRimColor{ 0.10f, 0.09f, 0.07f };
@@ -213,6 +216,7 @@ void ViewportWidget::setHardpoints(const HardpointTable& table)
     m_linkage = Linkage{};
     // And what each of them was for, which is a flag per row of that same table.
     m_grounded.clear();
+    m_locked.clear();
     rebuildLinkageVertices();
     update();
 }
@@ -275,6 +279,22 @@ void ViewportWidget::setGroundedPoints(const std::vector<bool>& grounded)
     m_grounded = grounded;
     rebuildLinkageVertices();
     update();
+}
+
+void ViewportWidget::setLockedPoints(const std::vector<bool>& locked)
+{
+    // As with the grounded flags: a list of the wrong length is another table's.
+    if (!locked.empty() && locked.size() != m_hardpoints.size()) return;
+    if (locked == m_locked) return;
+    m_locked = locked;
+    if (m_drag == Drag::Move && isLockedPoint(m_selectedPoint)) cancelMove();
+    update();
+}
+
+bool ViewportWidget::isLockedPoint(int index) const
+{
+    return index >= 0 && index < static_cast<int>(m_locked.size())
+           && m_locked[static_cast<std::size_t>(index)];
 }
 
 void ViewportWidget::setWheelModels(TriMesh wheel, EdgeSet wheelEdges, TriMesh rim,
@@ -780,6 +800,8 @@ void ViewportWidget::renderHardpoints(const QMatrix4x4& mvp)
         };
 
         drawMarker(-1, kPointColor, kPointSizePx);
+        for (int index = 0; index < static_cast<int>(m_locked.size()); ++index)
+            if (m_locked[static_cast<std::size_t>(index)]) drawMarker(index, kGhostColor, kPointSizePx);
         if (m_hoveredPoint >= 0 && !m_selection.contains(m_hoveredPoint))
             drawMarker(m_hoveredPoint, kHoverColor, kHighlightSizePx);
         for (const int index : m_selection) drawMarker(index, kSelectedColor, kHighlightSizePx);
@@ -837,6 +859,7 @@ MoveGizmo::Layout ViewportWidget::gizmoLayout() const
     // and three arrows on each of six points would be a thicket, not a handle.
     if (!m_pointEditingEnabled || m_selectedPoint < 0) return {};
     if (m_selectedPoint >= static_cast<int>(m_hardpoints.size())) return {};
+    if (isLockedPoint(m_selectedPoint)) return {};
 
     return MoveGizmo::layoutAt(m_camera, size(),
                                m_hardpoints[static_cast<std::size_t>(m_selectedPoint)]);
@@ -1217,7 +1240,7 @@ void ViewportWidget::keyPressEvent(QKeyEvent* event)
     // Unmodified, so Ctrl+Z stays whatever Ctrl+Z is, and with a marker to ask
     // about. Anything else goes on to the window, which has its own shortcuts.
     if (axis < 0 || event->modifiers() != Qt::NoModifier || !m_pointEditingEnabled
-        || m_selectedPoint < 0 || m_drag != Drag::None) {
+        || m_selectedPoint < 0 || isLockedPoint(m_selectedPoint) || m_drag != Drag::None) {
         QOpenGLWidget::keyPressEvent(event);
         return;
     }

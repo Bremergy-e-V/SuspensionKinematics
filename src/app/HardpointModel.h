@@ -3,6 +3,7 @@
 #include "geom/Vec3.h"
 #include "model/Hardpoint.h"
 #include "model/HardpointConfig.h"
+#include "model/HardpointMirror.h"
 
 #include <QAbstractTableModel>
 #include <QSet>
@@ -66,6 +67,7 @@ public:
         IssueLevelRole,                   ///< worst ConfigIssueLevel on the row, or -1
         IssueTextRole,                    ///< every issue on the row, one per line
         UnsolvedRole,                     ///< bool: typed Solved, but no solve moves it
+        GhostRole,                        ///< bool: a mirror that follows its source
     };
 
     explicit HardpointModel(QObject* parent = nullptr);
@@ -98,8 +100,22 @@ public:
     /// rest by the same amount. By name, so a group can name points the
     /// table does not have; those are simply not there to move.
     void setRigidGroups(std::vector<QStringList> groups);
-    /// The rows that move with @p row, not counting it.
+    /// The rows that move with @p row, not counting it. A ghost is never one:
+    /// it follows its own source instead.
     QList<int> rigidPartners(int row) const;
+
+    /// The mirror rule's axis: what a ghost is its source reflected across.
+    void setMirrorAxis(MirrorAxis axis);
+    /// Whether @p row is a ghost: a point made by mirroring whose source the
+    /// table still has. A ghost is the far side of its source and nothing
+    /// else -- every move of the source moves it, and it cannot be moved on
+    /// its own. A mirrored point whose source has gone is an ordinary point.
+    bool isGhost(int row) const;
+    /// isGhost() for every row, in row order: what the viewport locks.
+    std::vector<bool> ghostFlags() const;
+    /// Every row a move of @p row moved besides it: its rigid partners and
+    /// the ghosts of all of them.
+    QList<int> followers(int row) const;
 
     /// The configuration for every point, keyed by name.
     void setConfig(HardpointConfigMap config);
@@ -156,6 +172,13 @@ private:
     bool setCoordinate(const QModelIndex& index, const QVariant& value);
     /// Move @p row and its rigid partners by @p delta, and say so per row.
     void translateWithPartners(int row, const Vec3& delta);
+    /// Put every ghost of @p row and of its rigid partners where its source's
+    /// mirror image is now.
+    void updateGhostsOf(int row);
+    /// The rows that are ghosts of @p row.
+    QList<int> ghostsOf(int row) const;
+    /// Refuse an edit of @p row because it is a ghost, saying whose.
+    void rejectGhostEdit(int row);
     bool setConfigField(int row, int column, const QVariant& value);
     QVariant configDisplay(int row, const HardpointConfig& config, int column) const;
     QVariant tooltipFor(int row, int column) const;
@@ -165,6 +188,7 @@ private:
     BodyCatalog m_catalog;
     std::optional<QSet<QString>> m_solved;
     std::vector<QStringList> m_rigidGroups;
+    MirrorAxis m_mirrorAxis = MirrorAxis::Y;
 };
 
 } // namespace suspkin

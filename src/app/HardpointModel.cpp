@@ -256,6 +256,10 @@ QVariant HardpointModel::tooltipFor(int row, int column) const
                    .arg(point.coord[0], 0, 'f', 4)
                    .arg(point.coord[1], 0, 'f', 4)
                    .arg(point.coord[2], 0, 'f', 4);
+        if (isGhost(row))
+            text += QLatin1String("\n\n")
+                    + tr("The mirror of %1. It follows %1 and is moved by moving %1.")
+                          .arg(point.mirrorOf);
         break;
     }
 
@@ -331,6 +335,8 @@ QVariant HardpointModel::data(const QModelIndex& index, int role) const
 
     case UnsolvedRole: return isUnsolved(row);
 
+    case GhostRole: return isGhost(row);
+
     default: return {};
     }
 }
@@ -387,7 +393,8 @@ Qt::ItemFlags HardpointModel::flags(const QModelIndex& index) const
 {
     Qt::ItemFlags result = QAbstractTableModel::flags(index);
     if (!index.isValid()) return result;
-    if (index.column() == NameColumn || isCoordinateColumn(index.column())
+    const bool lockedCoordinate = isCoordinateColumn(index.column()) && isGhost(index.row());
+    if (index.column() == NameColumn || (isCoordinateColumn(index.column()) && !lockedCoordinate)
         || isConfigColumn(index.column()))
         result |= Qt::ItemIsEditable;
     return result;
@@ -408,6 +415,10 @@ bool HardpointModel::setCoordinate(const QModelIndex& index, const QVariant& val
     const double parsed = value.toDouble(&ok);
     if (!ok) return false;
 
+    if (isGhost(index.row())) {
+        rejectGhostEdit(index.row());
+        return false;
+    }
     const int axis = axisOf(index.column());
     const double stored = m_table.points[static_cast<std::size_t>(index.row())].coord[axis];
     // Returning false for a no-op keeps the document from being marked dirty by
@@ -425,6 +436,7 @@ bool HardpointModel::setCoordinate(const QModelIndex& index, const QVariant& val
         translateWithPartners(index.row(), delta);
         m_table.points[static_cast<std::size_t>(index.row())].coord[axis] = parsed;
     }
+    updateGhostsOf(index.row());
     emit coordinateChanged(index.row());
     return true;
 }
@@ -432,6 +444,10 @@ bool HardpointModel::setCoordinate(const QModelIndex& index, const QVariant& val
 bool HardpointModel::movePoint(int row, const Vec3& to)
 {
     if (row < 0 || row >= rowCount()) return false;
+    if (isGhost(row)) {
+        rejectGhostEdit(row);
+        return false;
+    }
     const Hardpoint& point = m_table.points[static_cast<std::size_t>(row)];
     const Vec3 delta(to.x - point.coord[0], to.y - point.coord[1], to.z - point.coord[2]);
     if (delta.x == 0.0 && delta.y == 0.0 && delta.z == 0.0) return false;
@@ -442,6 +458,7 @@ bool HardpointModel::movePoint(int row, const Vec3& to)
     moved.coord[0] = to.x;
     moved.coord[1] = to.y;
     moved.coord[2] = to.z;
+    updateGhostsOf(row);
     emit coordinateChanged(row);
     return true;
 }
@@ -475,10 +492,77 @@ QList<int> HardpointModel::rigidPartners(int row) const
         if (!group.contains(name)) continue;
         for (const QString& member : group) {
             const int other = m_table.indexOf(member);
-            if (other >= 0 && other != row && !partners.contains(other)) partners << other;
+            if (other >= 0 && other != row && !partners.contains(other) && !isGhost(other))
+                partners << other;
         }
     }
     return partners;
+}
+
+void HardpointModel::setMirrorAxis(MirrorAxis axis)
+{
+    m_mirrorAxis = axis;
+}
+
+bool HardpointModel::isGhost(int row) const
+{
+    if (row < 0 || row >= rowCount()) return false;
+    const Hardpoint& point = m_table.points[static_cast<std::size_t>(row)];
+    return point.isMirrored() && m_table.indexOf(point.mirrorOf) >= 0;
+}
+
+std::vector<bool> HardpointModel::ghostFlags() const
+{
+    std::vector<bool> flags(m_table.points.size(), false);
+    for (int row = 0; row < rowCount(); ++row) flags[static_cast<std::size_t>(row)] = isGhost(row);
+    return flags;
+}
+
+QList<int> HardpointModel::ghostsOf(int row) const
+{
+    QList<int> ghosts;
+    const QString& name = m_table.points[static_cast<std::size_t>(row)].name;
+    for (int other = 0; other < rowCount(); ++other)
+        if (other != row && m_table.points[static_cast<std::size_t>(other)].mirrorOf == name)
+            ghosts << other;
+    return ghosts;
+}
+
+QList<int> HardpointModel::followers(int row) const
+{
+    QList<int> moved = rigidPartners(row);
+    QList<int> all = moved;
+    moved.prepend(row);
+    for (const int source : std::as_const(moved))
+        for (const int ghost : ghostsOf(source))
+            if (!all.contains(ghost)) all << ghost;
+    return all;
+}
+
+void HardpointModel::updateGhostsOf(int row)
+{
+    QList<int> sources = rigidPartners(row);
+    sources.prepend(row);
+    const int flipped = m_mirrorAxis == MirrorAxis::X ? 0 : (m_mirrorAxis == MirrorAxis::Y ? 1 : 2);
+    for (const int source : std::as_const(sources)) {
+        const Hardpoint& from = m_table.points[static_cast<std::size_t>(source)];
+        for (const int ghost : ghostsOf(source)) {
+            Hardpoint& to = m_table.points[static_cast<std::size_t>(ghost)];
+            // Exactly the reflection: the two coordinates the mirror does not
+            // touch are the source's own doubles, the third its negation.
+            for (int k = 0; k < 3; ++k) to.coord[k] = k == flipped ? -from.coord[k] : from.coord[k];
+            emit dataChanged(index(ghost, XColumn), index(ghost, ZColumn),
+                             { Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole });
+        }
+    }
+}
+
+void HardpointModel::rejectGhostEdit(int row)
+{
+    const Hardpoint& point = m_table.points[static_cast<std::size_t>(row)];
+    emit editRejected(row, tr("%1 is the mirror of %2. It follows %2: move %2 and %1 moves with "
+                              "it.")
+                               .arg(point.name, point.mirrorOf));
 }
 
 bool HardpointModel::setConfigField(int row, int column, const QVariant& value)

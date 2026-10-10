@@ -290,6 +290,16 @@ state and a drag is not.
   table's own value. Sending a position back would round two coordinates the
   drag never touched, and that turns up in the user's workbook as an edit they
   did not make.
+- **A mirrored point is a ghost.** A point with a `mirrorOf` whose source the
+  table still has (`HardpointModel::isGhost()`) is its source's reflection
+  across the project's mirror axis and nothing else: every move of the source
+  -- cell, arrow, X/Y/Z, `movePoint()`, a rigid part -- rewrites it in the same
+  edit, and it cannot be moved on its own. Its coordinate cells are not
+  editable and are drawn in the palette's disabled text; its marker is dimmed
+  and gets no arrows and no X/Y/Z field (`ViewportWidget::setLockedPoints()`,
+  synced with the grounded flags). A hand edit a ghost carried from before is
+  kept until its source next moves. Delete the source and the ghost is an
+  ordinary point again.
 - The hub belongs to the marker under it (`kHubClearancePx`), or a selected
   point could never be clicked again: all three arms start there.
 - **Editing is off while the mechanism is posed** (`setPointEditingEnabled()`,

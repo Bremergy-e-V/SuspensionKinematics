@@ -174,6 +174,7 @@ private slots:
     void draggingAnArmDoesNotOrbitOrSelect();
     void anAxisKeyAsksForTheCoordinate();
     void aPosedMechanismHasNoArrowsAndNoKeys();
+    void aGhostHasNoArrowsAndNoKeys();
     void noMemberIsDrawnBetweenTwoChassisPoints();
     void chassisFlagsGoWithTheTableTheyWereMeasuredOn();
 };
@@ -276,6 +277,30 @@ void TestViewportEditing::aPosedMechanismHasNoArrowsAndNoKeys()
 
     QCOMPARE(moved.size(), 0);
     QCOMPARE(asked.size(), 0);
+}
+
+void TestViewportEditing::aGhostHasNoArrowsAndNoKeys()
+{
+    // The mirror of another point follows its source; it is not grabbed.
+    SelectedPoint scene;
+    const QPoint onArm = scene.onArm(1, 45.0);
+    scene.viewport.setLockedPoints({ true, false });
+    QVERIFY(scene.viewport.isLockedPoint(0));
+
+    QSignalSpy moved(&scene.viewport, &ViewportWidget::hardpointMoved);
+    QSignalSpy asked(&scene.viewport, &ViewportWidget::coordinateEntryRequested);
+    scene.press(onArm);
+    scene.moveTo(scene.onArm(1, 100.0));
+    scene.release(scene.onArm(1, 100.0));
+    scene.pressKey(Qt::Key_Y);
+    QCOMPARE(moved.size(), 0);
+    QCOMPARE(asked.size(), 0);
+
+    // The locks belong to the table they were worked out for.
+    scene.viewport.setHardpoints(twoPoints());
+    QVERIFY(!scene.viewport.isLockedPoint(0));
+    scene.viewport.setLockedPoints({ true });
+    QVERIFY(!scene.viewport.isLockedPoint(0));
 }
 
 void TestViewportEditing::noMemberIsDrawnBetweenTwoChassisPoints()
