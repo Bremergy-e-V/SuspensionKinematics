@@ -405,14 +405,22 @@ jobs:
       # turn a published build into a non-compliant one. The versions come from
       # the env at the top of this file, so what is attached is always what the
       # Windows job actually built against.
+      #
+      # Qt moves a release out of official_releases into archive once a newer
+      # one is out -- 6.9.3 went on 2026-10-10 and this step 404ed -- so the
+      # archive is asked when the first place has nothing. It holds every
+      # release, current ones included.
       - name: Mirror the source of the LGPL libraries
         run: |
           set -Eeuo pipefail
           qt_series="${QT_VERSION%.*}"
-          base="https://download.qt.io/official_releases/qt/${qt_series}/${QT_VERSION}/submodules"
+          qt_path="qt/${qt_series}/${QT_VERSION}/submodules"
           for module in qtbase qtsvg; do
             file="${module}-everywhere-src-${QT_VERSION}.tar.xz"
-            curl -fsSL --retry 3 -o "artifacts/$file" "$base/$file"
+            curl -fsSL --retry 3 -o "artifacts/$file" \
+                "https://download.qt.io/official_releases/${qt_path}/$file" \
+              || curl -fsSL --retry 3 -o "artifacts/$file" \
+                "https://download.qt.io/archive/${qt_path}/$file"
           done
           curl -fsSL --retry 3 -o "artifacts/opencascade-${OCCT_TAG}-source.tar.gz" \
             "https://codeload.github.com/Open-Cascade-SAS/OCCT/tar.gz/refs/tags/${OCCT_TAG}"
