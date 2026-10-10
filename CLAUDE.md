@@ -456,14 +456,28 @@ not set here: its outer end is on a wishbone and is placed by hand.
 
 ## Distance to the chassis
 
-**Hardpoints > Distance to Chassis** puts the selected point a given distance
-off the imported chassis, moved square to the surface -- the shortest move
-that does it. `offsetFromChassis()` (`src/model/ChassisOffset.*`, core, tested)
-repeats the move from where it lands until the distance holds, because the
-surface square under a point is not always square under where it ends up; a
-point lying on the surface is refused rather than given a side. The move is
-`HardpointModel::movePoint()`, so it is an ordinary edit, and a point of a
-rigid rocker takes the rocker with it.
+**C** over the viewport (or Hardpoints > Distance to Chassis, which asks the
+viewport the same thing) opens a field on the selected point holding its
+distance to the imported chassis now. Typing a distance shows the marker
+there; dragging an arrow then slides the point along the chassis at that
+distance -- previewed every step, put into the table at each release -- until
+**Enter**. Escape leaves; the marker goes back to where the table has it, and
+whatever a drag already put in stays, one undo step each.
+
+- `PointEditController` does it, beside the arrows and the X/Y/Z field;
+  `ChassisDistanceEntry` is the field. Unlike the X/Y/Z field it does **not**
+  close when it loses focus: the viewport takes the click that grabs an
+  arrow. Selecting another point lets go of the distance.
+- A drag adds its distance to where the marker *was shown* when the arrow was
+  taken (`m_distanceBase`), not to the table's position: after a typed
+  distance the two differ, and the drag starts from the marker.
+- `offsetFromChassis()` (`src/model/ChassisOffset.*`, core, tested) is the
+  projection: square to the surface, repeated from where it lands until the
+  distance holds, because the surface square under a point is not always square
+  under where it ends up. A point lying on the surface is refused rather than
+  given a side. Every move is `HardpointModel::movePoint()`, so a point of a
+  rigid rocker takes the rocker with it and its ghosts follow.
+- Nothing about it is saved: it is a gesture, like a drag.
 
 The table itself (`src/app/HardpointPanel.*`, `HardpointModel.*`,
 `HardpointDelegates.*`) draws its colours from the palette rather than carrying a
