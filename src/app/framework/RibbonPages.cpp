@@ -30,17 +30,24 @@ std::vector<RegisteredCommand> commandsOnPage(const CommandRegistry& commands, c
     return onPage;
 }
 
+/// The group on @p page captioned @p caption, added after the others if the page
+/// has none yet. Looked up rather than taken to be the last one added: commands
+/// from two features can interleave in order -- Show Chassis between Solid and
+/// Triangles -- and a group must not come apart into two with the same caption
+/// because another group's command sorted in between.
+RibbonGroup* groupCaptioned(RibbonPage* page, const QString& caption)
+{
+    for (RibbonGroup* group : page->groups())
+        if (group->caption() == caption) return group;
+    return page->addGroup(caption);
+}
+
 /// Fill @p page in. Groups appear in the order of their earliest command, which
 /// is what lets a feature place a whole group by numbering its commands.
 void fillPage(RibbonPage* page, const std::vector<RegisteredCommand>& commands)
 {
-    RibbonGroup* group = nullptr;
-    QString openGroup;
     for (const RegisteredCommand& command : commands) {
-        if (!group || command.ribbon.group != openGroup) {
-            group = page->addGroup(command.ribbon.group);
-            openGroup = command.ribbon.group;
-        }
+        RibbonGroup* group = groupCaptioned(page, command.ribbon.group);
         switch (command.ribbon.button) {
         case RibbonButton::Small: group->addSmall(command.action); break;
         case RibbonButton::Large: group->addLarge(command.action); break;
