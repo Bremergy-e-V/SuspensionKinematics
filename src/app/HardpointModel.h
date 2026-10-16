@@ -84,10 +84,12 @@ public:
     bool insertPoint(int row, const Hardpoint& point);
     /// Take out every row in @p rows, and the configuration stored under each
     /// of their names -- a description of a point that is not there is not
-    /// something to keep.
+    /// something to keep. The ghosts of a point that goes go with it: on its
+    /// own a ghost would turn into a far-side point nobody asked for.
     void removePoints(std::vector<int> rows);
     /// Rename the point at @p row. Refused, through editRejected(), for any name
-    /// hardpointNameProblem() has something to say about.
+    /// hardpointNameProblem() has something to say about. A ghost named by the
+    /// mirror rule is renamed by it too, or the far side would stop resolving.
     bool renamePoint(int row, const QString& name);
 
     /// Put the point at @p row at @p to as one edit: a single
@@ -104,8 +106,13 @@ public:
     /// it follows its own source instead.
     QList<int> rigidPartners(int row) const;
 
-    /// The mirror rule's axis: what a ghost is its source reflected across.
-    void setMirrorAxis(MirrorAxis axis);
+    /// The mirror rule: what a ghost is its source reflected across, and what
+    /// it is called.
+    void setMirrorSpec(const MirrorSpec& spec);
+    /// Give the table the far side the mirror rule implies: every ghost put
+    /// exactly where its source's reflection is, and a ghost appended for each
+    /// point missingMirrors() finds without one. True when anything changed.
+    bool completeMirrors();
     /// Whether @p row is a ghost: a point made by mirroring whose source the
     /// table still has. A ghost is the far side of its source and nothing
     /// else -- every move of the source moves it, and it cannot be moved on
@@ -177,6 +184,11 @@ private:
     void updateGhostsOf(int row);
     /// The rows that are ghosts of @p row.
     QList<int> ghostsOf(int row) const;
+    /// Put the ghost at @p ghost where @p source's reflection is.
+    void placeGhost(int ghost, const Hardpoint& source);
+    /// Rename the ghosts of the point that was @p from now that it is @p to,
+    /// where the mirror rule named them and the new name is free.
+    void renameGhosts(const QString& from, const QString& to);
     /// Refuse an edit of @p row because it is a ghost, saying whose.
     void rejectGhostEdit(int row);
     bool setConfigField(int row, int column, const QVariant& value);
@@ -188,7 +200,7 @@ private:
     BodyCatalog m_catalog;
     std::optional<QSet<QString>> m_solved;
     std::vector<QStringList> m_rigidGroups;
-    MirrorAxis m_mirrorAxis = MirrorAxis::Y;
+    MirrorSpec m_mirror;
 };
 
 } // namespace suspkin

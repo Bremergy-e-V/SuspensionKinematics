@@ -84,6 +84,11 @@ public:
     void applyMirrorProvenance(HardpointTable& table) const;
     /// The inverse: fold the table's provenance back into the project.
     void captureMirrorProvenance();
+    /// Give the model the far side the project's mirror rule implies
+    /// (HardpointModel::completeMirrors()), and the project its provenance.
+    /// The ghosts are never written anywhere, so this is how they come back
+    /// after a table was read, made or added to.
+    void completeMirrors();
 
     /// Hand the model the bodies @p templ offers, and fill in what it implies
     /// for any point that has no configuration yet. Returns how many were

@@ -59,7 +59,9 @@ private slots:
     void aPointIsMovedAsOneEdit();
     void aRigidPartMovesAsOne();
     void aMirrorFollowsItsSourceAndCannotBeMovedAlone();
-    void aMirrorWhoseSourceIsGoneIsAnOrdinaryPoint();
+    void aMirrorGoesWithItsSource();
+    void aMirrorIsRenamedWithItsSource();
+    void completingMirrorsAddsOnlyTheMissingFarSide();
 
 private:
     QModelIndex cell(int row, int column) const { return m_model->index(row, column); }
@@ -457,19 +459,49 @@ void TestHardpointModel::aMirrorFollowsItsSourceAndCannotBeMovedAlone()
     QCOMPARE(m_model->table().points[2].coord[2], 131.25);
 
     // Across another axis when the rule says so.
-    m_model->setMirrorAxis(MirrorAxis::X);
+    MirrorSpec acrossX;
+    acrossX.axis = MirrorAxis::X;
+    m_model->setMirrorSpec(acrossX);
     QVERIFY(m_model->setData(cell(1, HardpointModel::ZColumn), 140.0, Qt::EditRole));
     QCOMPARE(m_model->table().points[2].coord[0], 1995.0);
     QCOMPARE(m_model->table().points[2].coord[1], 575.5);
 }
 
-void TestHardpointModel::aMirrorWhoseSourceIsGoneIsAnOrdinaryPoint()
+void TestHardpointModel::aMirrorGoesWithItsSource()
 {
     m_model->setTable(withAMirror());
     m_model->removePoints({ 1 });
-    QVERIFY(!m_model->isGhost(1));
-    QVERIFY(m_model->setData(cell(1, HardpointModel::ZColumn), 99.0, Qt::EditRole));
-    QCOMPARE(m_model->table().points[1].coord[2], 99.0);
+    QCOMPARE(m_model->rowCount(), 1);
+    QCOMPARE(m_model->table().indexOf(QStringLiteral("F_LCA_O_M")), -1);
+}
+
+void TestHardpointModel::aMirrorIsRenamedWithItsSource()
+{
+    m_model->setTable(withAMirror());
+    QVERIFY(m_model->renamePoint(1, QStringLiteral("F_LCA_OUT")));
+    const Hardpoint* ghost = m_model->table().find(QStringLiteral("F_LCA_OUT_M"));
+    QVERIFY(ghost);
+    QCOMPARE(ghost->mirrorOf, QStringLiteral("F_LCA_OUT"));
+    QVERIFY(m_model->isGhost(2));
+}
+
+void TestHardpointModel::completingMirrorsAddsOnlyTheMissingFarSide()
+{
+    HardpointTable table = withAMirror();
+    // Hand-moved before ghosts were locked: put back on the reflection.
+    table.points[2].coord[2] = 0.0;
+    m_model->setTable(table);
+
+    QVERIFY(m_model->completeMirrors());
+    // The inner point gets a far side; the outer one has one already.
+    QCOMPARE(m_model->rowCount(), 4);
+    const Hardpoint* added = m_model->table().find(QStringLiteral("F_LCA_IF_M"));
+    QVERIFY(added);
+    QCOMPARE(added->mirrorOf, QStringLiteral("F_LCA_IF"));
+    QCOMPARE(added->coord[1], -m_model->table().points[0].coord[1]);
+    QCOMPARE(m_model->table().points[2].coord[2], m_model->table().points[1].coord[2]);
+
+    QVERIFY(!m_model->completeMirrors());
 }
 
 QTEST_MAIN(TestHardpointModel)

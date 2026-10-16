@@ -1,5 +1,7 @@
 #include "render/ViewportWidget.h"
 
+#include "model/HardpointMirror.h"
+
 #include <QCursor>
 #include <QFontMetricsF>
 #include <QKeyEvent>
@@ -193,6 +195,7 @@ void ViewportWidget::setHardpoints(const HardpointTable& table)
 {
     m_hardpoints.clear();
     m_hardpointNames.clear();
+    m_labelNames.clear();
     m_hardpointBounds = Aabb{};
     m_hardpoints.reserve(table.points.size());
 
@@ -200,6 +203,8 @@ void ViewportWidget::setHardpoints(const HardpointTable& table)
         const QVector3D position = point.toVector();
         m_hardpoints.push_back(position);
         m_hardpointNames.append(point.name);
+        m_labelNames.append(isGhostAt(table, m_hardpointNames.size() - 1) ? point.mirrorOf
+                                                                          : point.name);
         m_hardpointBounds.expand(position);
     }
 
@@ -288,6 +293,16 @@ void ViewportWidget::setLockedPoints(const std::vector<bool>& locked)
     if (locked == m_locked) return;
     m_locked = locked;
     if (m_drag == Drag::Move && isLockedPoint(m_selectedPoint)) cancelMove();
+    if (!m_lockedShown) rebuildLinkageVertices();
+    update();
+}
+
+void ViewportWidget::setLockedPointsShown(bool shown)
+{
+    if (m_lockedShown == shown) return;
+    m_lockedShown = shown;
+    if (!shown && isLockedPoint(m_hoveredPoint)) m_hoveredPoint = -1;
+    rebuildLinkageVertices();
     update();
 }
 
@@ -406,6 +421,9 @@ void ViewportWidget::rebuildLinkageVertices()
                     // topology, not because the frame has a bar across it. A
                     // pivot is drawn anyway: what it shows is the axis.
                     if (chain.style != ChainStyle::Pivot && grounded(a) && grounded(b)) continue;
+                    // The mirrored side is hidden, and a member half on it
+                    // with it.
+                    if (isHiddenPoint(a) || isHiddenPoint(b)) continue;
                     m_linkVertices.push_back(position(a));
                     m_linkVertices.push_back(position(b));
                 }
@@ -715,6 +733,7 @@ void ViewportWidget::renderWheels(const QMatrix4x4& view, const QMatrix4x4& mvp)
     if (wireframe) program->setUniformValue("uColor", kEdgeColor);
 
     for (const WheelPlacement& placement : m_wheelPlacements) {
+        if (isHiddenPoint(static_cast<int>(m_hardpointNames.indexOf(placement.pointName)))) continue;
         for (const Body& body : bodies) {
             if (!body.gpu->isValid()) continue;
 
@@ -811,12 +830,19 @@ void ViewportWidget::renderHardpoints(const QMatrix4x4& mvp)
                 m_gpuPoints.drawOne(*this, index);
         };
 
-        drawMarker(-1, kPointColor, kPointSizePx);
-        for (int index = 0; index < static_cast<int>(m_locked.size()); ++index)
-            if (m_locked[static_cast<std::size_t>(index)]) drawMarker(index, kGhostColor, kPointSizePx);
+        if (m_lockedShown) {
+            drawMarker(-1, kPointColor, kPointSizePx);
+            for (int index = 0; index < static_cast<int>(m_locked.size()); ++index)
+                if (m_locked[static_cast<std::size_t>(index)])
+                    drawMarker(index, kGhostColor, kPointSizePx);
+        } else {
+            for (int index = 0; index < static_cast<int>(m_hardpoints.size()); ++index)
+                if (!isLockedPoint(index)) drawMarker(index, kPointColor, kPointSizePx);
+        }
         if (m_hoveredPoint >= 0 && !m_selection.contains(m_hoveredPoint))
             drawMarker(m_hoveredPoint, kHoverColor, kHighlightSizePx);
-        for (const int index : m_selection) drawMarker(index, kSelectedColor, kHighlightSizePx);
+        for (const int index : m_selection)
+            if (!isHiddenPoint(index)) drawMarker(index, kSelectedColor, kHighlightSizePx);
     }
 
     m_pointProgram->release();
@@ -847,6 +873,7 @@ int ViewportWidget::hardpointAt(const QPoint& pos) const
     float bestDepth = std::numeric_limits<float>::max();
 
     for (std::size_t i = 0; i < m_hardpoints.size(); ++i) {
+        if (isHiddenPoint(static_cast<int>(i))) continue;
         QPointF screen;
         float depth = 0.0f;
         if (!project(viewProjection, m_hardpoints[i], &screen, &depth)) continue;
@@ -961,6 +988,7 @@ std::vector<ViewportWidget::Label> ViewportWidget::layoutLabels() const
 
     for (std::size_t i = 0; i < m_hardpoints.size(); ++i) {
         const int index = static_cast<int>(i);
+        if (isHiddenPoint(index)) continue;
         const bool pinned = (m_selection.contains(index) || index == m_hoveredPoint);
         if (!m_labelsVisible && !pinned) continue;
 
@@ -979,7 +1007,7 @@ std::vector<ViewportWidget::Label> ViewportWidget::layoutLabels() const
                      });
 
     for (const Candidate& candidate : candidates) {
-        const QString text = m_hardpointNames.value(candidate.index);
+        const QString text = m_labelNames.value(candidate.index);
         if (text.isEmpty()) continue;
 
         const QSizeF size(metrics.horizontalAdvance(text) + 2.0 * kLabelPadX,

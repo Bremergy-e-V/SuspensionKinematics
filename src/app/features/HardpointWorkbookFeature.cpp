@@ -144,9 +144,10 @@ private:
         box.setWindowTitle(tr("Overwrite the project's workbook?"));
         box.setText(tr("Write %1 change(s) into %2?").arg(changes).arg(QFileInfo(path).fileName()));
         box.setInformativeText(
-            tr("%1\n\nThe hardpoint cells are rewritten in place and mirrored points are added as "
-               "new rows; everything else in the workbook -- other sheets, formatting and "
-               "formulas -- is kept as it is.\n\nThis is the project's own copy. The file it was "
+            tr("%1\n\nThe hardpoint cells are rewritten in place and new points are added as "
+               "new rows. Mirrored points are not written: the far side is worked out from this "
+               "one. Everything else in the workbook -- other sheets, formatting and formulas -- "
+               "is kept as it is.\n\nThis is the project's own copy. The file it was "
                "imported from is not touched; use Export Workbook As to write that one.")
                 .arg(QDir::toNativeSeparators(path)));
         QPushButton* overwrite = box.addButton(tr("Overwrite"), QMessageBox::AcceptRole);

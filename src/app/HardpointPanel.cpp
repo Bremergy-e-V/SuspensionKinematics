@@ -31,6 +31,23 @@ struct ColumnWidth {
     int width;
 };
 
+/// The name filter, less the ghosts. A ghost is the far side of a point the
+/// table already lists, worked out rather than kept, so listing it would only
+/// put a name in front of the user that their workbook never holds.
+class NearSideFilter : public QSortFilterProxyModel {
+public:
+    using QSortFilterProxyModel::QSortFilterProxyModel;
+
+protected:
+    bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override
+    {
+        const QModelIndex name = sourceModel()->index(sourceRow, HardpointModel::NameColumn,
+                                                      sourceParent);
+        if (name.data(HardpointModel::GhostRole).toBool()) return false;
+        return QSortFilterProxyModel::filterAcceptsRow(sourceRow, sourceParent);
+    }
+};
+
 /// @p a mixed @p t of the way towards @p b. Used to derive the striping and the
 /// selection wash from whatever the palette actually is, so they land in the
 /// right place in either theme without a second set of constants.
@@ -241,7 +258,7 @@ HardpointPanel::HardpointPanel(HardpointModel* model, QWidget* parent)
     m_filter->setPlaceholderText(tr("Filter, e.g. F_UCA"));
     m_filter->setToolTip(tr("Show only the points whose name contains this text, in any case."));
 
-    m_proxy = new QSortFilterProxyModel(this);
+    m_proxy = new NearSideFilter(this);
     m_proxy->setSourceModel(m_model);
     m_proxy->setFilterKeyColumn(HardpointModel::NameColumn);
     m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);

@@ -362,6 +362,8 @@ void RockerDialog::showPlan()
 
     const QColor warn(warningColor);
     for (const DesignChange& change : m_plan.changes) {
+        // The far side is worked out from the near side, and not listed.
+        if (change.mirrored) continue;
         QString what;
         switch (change.kind) {
         case DesignChange::Kind::Added: what = tr("new"); break;
@@ -370,7 +372,6 @@ void RockerDialog::showPlan()
         }
         QString note;
         if (change.handEdited) note = tr("your edit is overwritten");
-        else if (change.mirrored) note = tr("far side, from the mirror rule");
         auto* item = new QTreeWidgetItem(m_preview, { change.name, what, note });
         if (change.handEdited)
             for (int c = 0; c < 3; ++c) item->setForeground(c, warn);

@@ -1,5 +1,4 @@
 #include "app/HardpointModel.h"
-#include "app/MirrorDialog.h"
 #include "app/PointDialog.h"
 #include "app/features/SharedCommands.h"
 #include "app/framework/AppContext.h"
@@ -29,8 +28,8 @@ QString tr(const char* text, const char* disambiguation, int n)
     return QCoreApplication::translate("HardpointsFeature", text, disambiguation, n);
 }
 
-/// The points themselves: making them, mirroring them, and editing the ones
-/// there are. Where they come from and go back to is HardpointWorkbookFeature's.
+/// The points themselves: making them, editing the ones there are, and
+/// showing or hiding the far side mirrored from them. Where they come from and go back to is HardpointWorkbookFeature's.
 class HardpointsFeature : public Feature {
 public:
     explicit HardpointsFeature(AppContext& context) : m_context(context) {}
@@ -47,6 +46,7 @@ public:
     {
         const ViewportWidget* viewport = m_context.viewport();
         view.labelsVisible = viewport->hardpointLabelsVisible();
+        view.mirroredSideVisible = viewport->lockedPointsShown();
         view.selectedHardpoint = viewport->selectedHardpoint();
         view.selection = viewport->selectedHardpoints();
     }
@@ -55,6 +55,8 @@ public:
     {
         m_showLabels->setChecked(view.labelsVisible);
         m_context.viewport()->setHardpointLabelsVisible(view.labelsVisible);
+        m_showMirrored->setChecked(view.mirroredSideVisible);
+        m_context.viewport()->setLockedPointsShown(view.mirroredSideVisible);
 
         // The whole selection, in the order it was picked -- a chain half-picked
         // for a new part comes back half-picked.
@@ -87,18 +89,24 @@ private:
         const QString points = tr("Points");
 
         // The icon has the mirror line upright, which is how the car's centre
-        // plane -- the one mirroring flips across -- looks from above.
-        commands.add({
-            .id = QStringLiteral("hardpoints.mirror"),
-            .text = tr("&Mirror Hardpoints..."),
+        // plane -- the one the far side is mirrored across -- looks from above.
+        m_showMirrored = commands.add({
+            .id = QStringLiteral("hardpoints.showMirrored"),
+            .text = tr("Show &Mirrored Side"),
             .icon = Icon::FlipHorizontal,
             .iconText = tr("Mirror"),
             .shortcut = QKeySequence(QStringLiteral("Ctrl+M")),
-            .statusTip =
-                tr("Copy points to the other side of the car, named by the project's own rule."),
+            .statusTip = tr("Draw the far side of the car, mirrored from this one. It is "
+                            "worked out from the points in the table, never listed in it and "
+                            "never written into the workbook; hidden, it is still solved."),
+            .checkable = true,
+            .checkedByDefault = true,
             .ribbon = { { page, points, RibbonButton::Large, nullptr, 70 } },
-            .run = [this] { mirrorHardpointsDialog(); },
-            .enabledWhen = [this] { return hasPoints(); },
+            .onToggled =
+                [this](bool on) {
+                    m_context.viewport()->setLockedPointsShown(on);
+                    m_context.markDirty();
+                },
         });
 
         commands.add({
@@ -199,48 +207,6 @@ private:
         m_context.showStatus(tr("Added %1").arg(point.name), 5000);
     }
 
-    void mirrorHardpointsDialog()
-    {
-        if (!hasPoints()) return;
-
-        HardpointModel* model = m_context.hardpoints();
-        Project& project = m_context.project();
-        MirrorDialog dialog(model->table(), m_context.viewport()->selectedHardpoints(),
-                            project.mirror(), m_context.window());
-        if (dialog.exec() != QDialog::Accepted) return;
-
-        const MirrorSpec spec = dialog.spec();
-        const MirrorOutcome outcome = mirrorHardpoints(model->table(), dialog.rows(), spec);
-
-        // The rule is remembered whether or not it changed anything: it is the
-        // user's convention, and they will want it again next time.
-        project.setMirror(spec);
-
-        if (outcome.added == 0 && outcome.updated == 0) {
-            QMessageBox::information(m_context.window(), tr("Nothing to mirror"),
-                                     outcome.notes.isEmpty()
-                                         ? tr("No hardpoints were mirrored.")
-                                         : outcome.notes.join(QStringLiteral("\n\n")));
-            m_context.markDirty();
-            return;
-        }
-
-        m_context.setHardpointTable(outcome.table, false);
-        m_context.session().hardpoints().captureMirrorProvenance();
-        m_context.markDirty();
-        m_context.session().recordEdit(
-            tr("Mirror %n point(s)", "", outcome.added + outcome.updated));
-
-        m_context.showStatus(
-            tr("Mirrored %1 hardpoint(s), replaced %2").arg(outcome.added).arg(outcome.updated),
-            6000);
-
-        if (!outcome.notes.isEmpty()) {
-            QMessageBox::information(m_context.window(), tr("Mirrored with notes"),
-                                     outcome.notes.join(QStringLiteral("\n\n")));
-        }
-    }
-
     void renamePointDialog()
     {
         const int row = m_context.viewport()->selectedHardpoint();
@@ -299,6 +265,7 @@ private:
 
     AppContext& m_context;
     QAction* m_showLabels = nullptr;
+    QAction* m_showMirrored = nullptr;
 };
 
 } // namespace
