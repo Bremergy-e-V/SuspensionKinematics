@@ -97,6 +97,8 @@ private slots:
     void anEmptyCatalogChecksNoBodyNames();
     void aGroundedPointWithoutTheChassisIsOnlyAWarning();
     void aSolvedPointHeldToTheChassisWarns();
+    void aRigidJointNeedsTwoMovingBodies();
+    void aContactPatchNeedsTheBodyItIsUnder();
     void aBushingNeedsTwoBodiesToActBetween();
     void inferenceDoesNotTalkOverWhatTheUserSet();
     void theChassisPointsAreFlaggedByRow();
@@ -218,8 +220,10 @@ void TestHardpointConfig::whatTheUprightCarriesIsDependentOnIt()
     QCOMPARE(center.part1, kUpright);
     QCOMPARE(center.part2, kWheel);
 
+    // The patch rides the wheel too, but it is worked out rather than carried,
+    // which is a type of its own.
     const HardpointConfig patch = config.value(QStringLiteral("F_ContactPatch"));
-    QCOMPARE(patch.type, PointType::Dependent);
+    QCOMPARE(patch.type, PointType::ContactPatch);
     QCOMPARE(patch.part1, kWheel);
 
     // The axis point is bolted to the wheel as much as its centre is: it is a
@@ -357,6 +361,33 @@ void TestHardpointConfig::aSolvedPointHeldToTheChassisWarns()
         validateHardpointConfig(config, bodyCatalog(builtinLinkageTemplate()));
     QCOMPARE(issues.size(), std::size_t(1));
     QCOMPARE(issues.front().level, ConfigIssueLevel::Warning);
+}
+
+void TestHardpointConfig::aRigidJointNeedsTwoMovingBodies()
+{
+    const BodyCatalog catalog = bodyCatalog(builtinLinkageTemplate());
+    HardpointConfig config;
+    config.type = PointType::Welded;
+    config.part1 = kPushrod;
+    QCOMPARE(validateHardpointConfig(config, catalog).size(), std::size_t(1));
+
+    config.part2 = QStringLiteral("Damper");
+    QVERIFY(validateHardpointConfig(config, catalog).empty());
+
+    config.part2 = kGround;
+    const std::vector<ConfigIssue> grounded = validateHardpointConfig(config, catalog);
+    QCOMPARE(grounded.size(), std::size_t(1));
+    QCOMPARE(grounded.front().level, ConfigIssueLevel::Warning);
+}
+
+void TestHardpointConfig::aContactPatchNeedsTheBodyItIsUnder()
+{
+    const BodyCatalog catalog = bodyCatalog(builtinLinkageTemplate());
+    HardpointConfig config;
+    config.type = PointType::ContactPatch;
+    QCOMPARE(validateHardpointConfig(config, catalog).size(), std::size_t(1));
+    config.part1 = kWheel;
+    QVERIFY(validateHardpointConfig(config, catalog).empty());
 }
 
 void TestHardpointConfig::aBushingNeedsTwoBodiesToActBetween()

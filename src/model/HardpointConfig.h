@@ -14,20 +14,31 @@ namespace suspkin {
 
 /// What the solver is being told to do with a point.
 ///
-/// These are the three things a hardpoint can be in a kinematic model, and they
-/// are the same three the mechanism template already distinguishes: a chassis
-/// pivot that never moves, a joint whose position falls out of the solve, and a
-/// point that is simply carried along by a body that moves.
+/// This is what the solve is built from: every point names the two bodies that
+/// meet there, and its type says what the joint between them allows. A chassis
+/// pivot never moves; a ball joint holds two bodies together and lets them turn
+/// against each other; a rigid joint holds them together and turns them as one;
+/// and a point that is simply carried along by a body is not a joint at all.
 enum class PointType {
-    Unassigned, ///< nobody has said yet; the table is still being filled in
-    ToBody,     ///< fixed to the chassis: the solve treats it as ground
-    Solved,     ///< a moving joint, positioned by the linkage it belongs to
-    Dependent,  ///< rides a body rigidly -- a wheel centre, a caliper mount
+    Unassigned,   ///< nobody has said yet; the table is still being filled in
+    ToBody,       ///< fixed to the chassis: the solve treats it as ground
+    Solved,       ///< a ball joint between two moving bodies: they meet here and may turn
+    Welded,       ///< a rigid joint: the two bodies meet here and turn as one
+    Dependent,    ///< rides a body rigidly -- a wheel centre, a caliper mount
+    ContactPatch, ///< where the tyre meets the road, worked out from the wheel it is under
 };
 
 /// Every type, in the order the dropdown offers them.
 inline constexpr PointType kPointTypes[] = { PointType::Unassigned, PointType::ToBody,
-                                             PointType::Solved, PointType::Dependent };
+                                             PointType::Solved,     PointType::Welded,
+                                             PointType::Dependent,  PointType::ContactPatch };
+
+/// Whether a point of @p type joins two bodies, which is what the solve holds
+/// together, rather than only riding one.
+inline bool isJoint(PointType type)
+{
+    return type == PointType::ToBody || type == PointType::Solved || type == PointType::Welded;
+}
 
 /// Stable identifiers for the project file. Round-trip safe: a type written by
 /// one release reads back the same in the next.

@@ -49,7 +49,9 @@ int hueFor(PointType type)
     switch (type) {
     case PointType::ToBody: return 212;    // blue: pinned to the car
     case PointType::Solved: return 146;    // green: the solver works this one out
+    case PointType::Welded: return 176;    // teal: worked out too, two bodies as one
     case PointType::Dependent: return 32;  // amber: carried along by a body
+    case PointType::ContactPatch: return 280; // violet: where the wheel meets the road
     case PointType::Unassigned: return -1; // no colour, on purpose
     }
     return -1;

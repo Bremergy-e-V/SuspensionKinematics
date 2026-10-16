@@ -110,6 +110,11 @@ private slots:
     void aPartIsRemovedWithoutDisturbingTheFile();
     void aPartIsRelabelledWithoutDisturbingTheFile();
     void aNewPartsIdIsMadeFromItsLabel();
+    void aDamperIsCompressibleUnlessItsTemplateSaysOtherwise();
+    void complianceAndPivotStyleSurviveAWriteAndAReadBack();
+    void aPartIsReplacedWithoutDisturbingTheFile();
+    void theMechanismIsReplacedWithoutDisturbingTheFile();
+    void anEmptyMechanismIsWrittenAsAnEmptyBlock();
 };
 
 void TestLinkage::theBuiltInTemplateIsReadable()
@@ -684,6 +689,117 @@ void TestLinkage::aNewPartsIdIsMadeFromItsLabel()
     QCOMPARE(uniquePartId(templ, QStringLiteral("Tie rod")), QStringLiteral("tieRod2"));
     QCOMPARE(uniquePartId(templ, QStringLiteral("3rd link")), QStringLiteral("part3rdLink"));
     QCOMPARE(uniquePartId(templ, QStringLiteral("  ")), QStringLiteral("part"));
+}
+
+void TestLinkage::aDamperIsCompressibleUnlessItsTemplateSaysOtherwise()
+{
+    const LinkageTemplate templ = builtinLinkageTemplate();
+    for (const PartTemplate& part : templ.parts) {
+        const PartCompliance expected = part.kind == PartKind::Damper
+                                            ? PartCompliance::Compressible
+                                            : PartCompliance::Rigid;
+        QCOMPARE(part.compliance, expected);
+    }
+
+    const QByteArray stated = R"({"format": "suspkin-linkage-template", "parts": [
+        { "id": "spring", "kind": "other", "compliance": "compressible", "points": ["A", "B"] },
+        { "id": "solid", "kind": "damper", "compliance": "rigid", "points": ["C", "D"] }
+    ]})";
+    const LinkageTemplateLoadResult read = readLinkageTemplate(stated, QStringLiteral("stated"));
+    QVERIFY2(read.ok(), qPrintable(read.error));
+    QCOMPARE(read.templ->parts[0].compliance, PartCompliance::Compressible);
+    QCOMPARE(read.templ->parts[1].compliance, PartCompliance::Rigid);
+}
+
+void TestLinkage::complianceAndPivotStyleSurviveAWriteAndAReadBack()
+{
+    LinkageTemplate templ = builtinLinkageTemplate();
+    templ.parts.front().compliance = PartCompliance::Compressible;
+    templ.parts.front().chains.front().style = ChainStyle::Pivot;
+
+    const QByteArray written = writeLinkageTemplate(templ);
+    // A part that is what its kind implies says nothing about it.
+    QCOMPARE(written.count("\"compliance\""), 1);
+
+    const LinkageTemplateLoadResult reread = readLinkageTemplate(written, QStringLiteral("written"));
+    QVERIFY2(reread.ok(), qPrintable(reread.error));
+    QCOMPARE(reread.templ->parts.size(), templ.parts.size());
+    for (std::size_t i = 0; i < templ.parts.size(); ++i)
+        QVERIFY2(reread.templ->parts[i] == templ.parts[i], qPrintable(templ.parts[i].id));
+}
+
+void TestLinkage::aPartIsReplacedWithoutDisturbingTheFile()
+{
+    PartTemplate part;
+    part.id = QStringLiteral("pushRod");
+    part.label = QStringLiteral("{corner} pushrod");
+    part.kind = PartKind::Damper;
+    part.compliance = PartCompliance::Rigid;
+    ChainTemplate chain;
+    chain.points = { QStringLiteral("{corner}_PushRod_O"), QStringLiteral("{corner}_Damper_I") };
+    chain.style = ChainStyle::Pivot;
+    part.chains.push_back(chain);
+
+    QString error;
+    const QByteArray after = setTemplatePart(kHandWritten, part, &error);
+    QVERIFY2(!after.isEmpty(), qPrintable(error));
+    // The part before it and everything around the array are as they were.
+    QVERIFY(after.startsWith(kHandWritten.left(kHandWritten.indexOf("        {\n"))));
+    QVERIFY(after.contains(R"("somethingFromTheFuture": { "keep": "me" })"));
+    QVERIFY(after.contains("\"compliance\": \"rigid\""));
+    QVERIFY(after.endsWith("\n    ]\n}"));
+
+    const LinkageTemplateLoadResult reread = readLinkageTemplate(after, QStringLiteral("replaced"));
+    QVERIFY2(reread.ok(), qPrintable(reread.error));
+    QCOMPARE(reread.templ->parts.size(), std::size_t(2));
+    QVERIFY(reread.templ->parts.back() == part);
+
+    part.id = QStringLiteral("nothing");
+    QVERIFY(setTemplatePart(kHandWritten, part, &error).isEmpty());
+    QVERIFY(!error.isEmpty());
+}
+
+void TestLinkage::theMechanismIsReplacedWithoutDisturbingTheFile()
+{
+    MechanismTemplate mechanism = builtinMechanismTemplate();
+    mechanism.damperOutboard = QStringLiteral("{corner}_Damper_O2");
+
+    // A file with no block gets one, after what it has.
+    QString error;
+    const QByteArray added = setTemplateMechanism(kHandWritten, mechanism, &error);
+    QVERIFY2(!added.isEmpty(), qPrintable(error));
+    QVERIFY(added.startsWith(kHandWritten.left(kHandWritten.lastIndexOf("    ]"))));
+    QVERIFY(added.contains("\n    \"mechanism\": {\n        \"lowerWishbone\": {\n"));
+
+    const LinkageTemplateLoadResult reread = readLinkageTemplate(added, QStringLiteral("added"));
+    QVERIFY2(reread.ok(), qPrintable(reread.error));
+    QVERIFY(!reread.templ->mechanismAssumed);
+    QCOMPARE(reread.templ->mechanism.damperOutboard, QStringLiteral("{corner}_Damper_O2"));
+    QCOMPARE(reread.templ->mechanism.allNames(), mechanism.allNames());
+
+    // A file with one has that one replaced, and its notes kept.
+    const QByteArray builtin = builtinLinkageTemplateBytes();
+    const QByteArray replaced = setTemplateMechanism(builtin, mechanism, &error);
+    QVERIFY(replaced.startsWith(builtin.left(builtin.indexOf("\"mechanism\""))));
+    QVERIFY(replaced.endsWith(builtin.mid(builtin.indexOf("    \"parts\""))));
+    const LinkageTemplateLoadResult again = readLinkageTemplate(replaced, QStringLiteral("again"));
+    QVERIFY2(again.ok(), qPrintable(again.error));
+    QCOMPARE(again.templ->mechanism.damperOutboard, QStringLiteral("{corner}_Damper_O2"));
+    QCOMPARE(again.templ->mechanism.formerNames, mechanism.formerNames);
+    QCOMPARE(again.templ->notes, builtinLinkageTemplate().notes);
+}
+
+void TestLinkage::anEmptyMechanismIsWrittenAsAnEmptyBlock()
+{
+    QString error;
+    const QByteArray after =
+        setTemplateMechanism(builtinLinkageTemplateBytes(), MechanismTemplate{}, &error);
+    QVERIFY(after.contains("\"mechanism\": {}"));
+    // Not read as a template that never had one, which would assume the built-in.
+    const LinkageTemplateLoadResult reread = readLinkageTemplate(after, QStringLiteral("empty"));
+    QVERIFY2(reread.ok(), qPrintable(reread.error));
+    QVERIFY(!reread.templ->mechanismAssumed);
+    QVERIFY(reread.templ->mechanism.allNames().isEmpty());
 }
 
 void TestLinkage::theMechanismSurvivesAWriteAndAReadBack()

@@ -22,6 +22,28 @@ enum class PartKind { Wishbone, Link, Upright, Rocker, Damper, AntiRoll, Wheel, 
 QString partKindToString(PartKind kind);
 PartKind partKindFromString(const QString& text, PartKind fallback = PartKind::Other);
 
+/// Whether a part keeps its shape. A rigid part is one body: every point on it
+/// moves with it. A compressible one is a strut -- a damper, a spring -- whose
+/// two ends are free to come closer together or move apart, and whose length is
+/// what is measured.
+enum class PartCompliance { Rigid, Compressible };
+
+QString partComplianceToString(PartCompliance compliance);
+PartCompliance partComplianceFromString(const QString& text,
+                                        PartCompliance fallback = PartCompliance::Rigid);
+/// What a part of @p kind is when its template does not say: a damper gives,
+/// everything else holds its shape -- which is what every template written
+/// before the field existed meant.
+PartCompliance defaultCompliance(PartKind kind);
+
+/// How a chain is drawn. A line between two chassis points is not drawn,
+/// because nothing lies between them; a pivot is drawn anyway, because what it
+/// shows is the axis something turns about.
+enum class ChainStyle { Line, Pivot };
+
+QString chainStyleToString(ChainStyle style);
+ChainStyle chainStyleFromString(const QString& text, ChainStyle fallback = ChainStyle::Line);
+
 /// One run of hardpoints, drawn as a polyline. Closing it is what turns three
 /// points into an A-arm instead of two loose legs.
 struct ChainTemplate {
@@ -29,6 +51,9 @@ struct ChainTemplate {
     bool closed = false;
     /// Say nothing when these points are absent -- for what a car may not have.
     bool optional = false;
+    ChainStyle style = ChainStyle::Line;
+
+    bool operator==(const ChainTemplate& other) const = default;
 };
 
 /// One part as the template describes it: names and tokens, no coordinates.
@@ -36,6 +61,7 @@ struct PartTemplate {
     QString id;    ///< "lowerWishbone"; unique within the template
     QString label; ///< "{corner} {side} lower wishbone"
     PartKind kind = PartKind::Other;
+    PartCompliance compliance = PartCompliance::Rigid;
     std::vector<ChainTemplate> chains;
     bool optional = false;
     /// Whether the part is written once for every corner and side -- names
@@ -45,6 +71,8 @@ struct PartTemplate {
     /// through exactly those points, with nothing substituted and nothing
     /// mirrored. Drawing it per corner would draw one bracket eight times.
     bool perCorner = true;
+
+    bool operator==(const PartTemplate& other) const = default;
 };
 
 /// An axle, or whatever else the point names are grouped by.
@@ -121,6 +149,7 @@ struct LinkageTemplate {
 struct ResolvedChain {
     std::vector<int> points;
     bool closed = false;
+    ChainStyle style = ChainStyle::Line;
 
     int segmentCount() const;
 };
