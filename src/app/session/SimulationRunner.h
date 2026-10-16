@@ -35,9 +35,11 @@ struct SimulationRequest {
 /// there is nothing of it to save, and nothing here ever changes the table.
 class SimulationRunner {
 public:
-    /// Bind every axle the template names against the table as it stands.
+    /// Bind every axle the template names against the table as it stands, each
+    /// corner made of what @p config says joins what.
     void bind(const LinkageTemplate& templ, const HardpointTable& table, const MirrorSpec& mirror,
-              const QHash<QString, StaticAlignment>& alignment, const QString& steeringNote);
+              const QHash<QString, StaticAlignment>& alignment, const QString& steeringNote,
+              const HardpointConfigMap& config);
     /// Run the sweeps @p request asks for, or clear them when it wants none.
     void runSweep(const SimulationRequest& request);
     /// A sweep of every axle @p request plots, whether or not it wants them

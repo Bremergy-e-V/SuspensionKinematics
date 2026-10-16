@@ -61,10 +61,15 @@ public:
     /// and every axle is therefore steerable. It is passed in rather than
     /// bolted on afterwards because a table with no complete axle in it
     /// replaces the note entirely, so the two have to be decided together.
+    ///
+    /// @p config, when given, is what each corner is made of: what joins what at
+    /// every point (see @ref AxleSolver::build). Without it every corner is
+    /// solved from the template's roles.
     static Simulation build(const LinkageTemplate& templ, const HardpointTable& table,
                             const MirrorSpec& mirror,
                             const QHash<QString, StaticAlignment>& alignment,
-                            const QString& steeringNote = QString());
+                            const QString& steeringNote = QString(),
+                            const HardpointConfigMap* config = nullptr);
 
     bool isEmpty() const { return m_axles.empty(); }
     const std::vector<AxleSolver>& axles() const { return m_axles; }
