@@ -198,6 +198,13 @@ qt_add_executable(test_kinematics test_kinematics.cpp)
 target_link_libraries(test_kinematics PRIVATE suspkin_core Qt6::Test)
 add_test(NAME kinematics COMMAND test_kinematics)
 
+# The closed-form corner solve as it was, kept as the reference the solve built
+# from the configuration is held to.
+qt_add_executable(test_graph_solver test_graph_solver.cpp support/ReferenceCorner.cpp)
+target_include_directories(test_graph_solver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_graph_solver PRIVATE suspkin_core Qt6::Test)
+add_test(NAME graph_solver COMMAND test_graph_solver)
+
 qt_add_executable(test_hardpoint_generator test_hardpoint_generator.cpp)
 target_link_libraries(test_hardpoint_generator PRIVATE suspkin_core Qt6::Test)
 add_test(NAME hardpoint_generator COMMAND test_hardpoint_generator)

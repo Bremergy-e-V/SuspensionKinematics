@@ -1,0 +1,593 @@
+#include "support/ReferenceCorner.h"
+
+#include <QCoreApplication>
+
+#include <algorithm>
+#include <cmath>
+
+namespace suspkin {
+namespace {
+
+QString tr(const char* text) { return QCoreApplication::translate("SuspensionSolver", text); }
+
+constexpr double kRadToDeg = 57.295779513082320876798154814105;
+
+/// How close to the asked-for height counts as arrived. A micron: far below
+/// anything a suspension is measured to, and far above where the doubles stop.
+constexpr double kTargetTolerance = 1e-7;
+
+/// Bigger than any single Newton step should ever need on a suspension, and
+/// small enough that overshooting cannot fling the solve past a link's limit
+/// into a region where it does not assemble.
+constexpr double kMaxStep = 0.35;
+
+/// Where the road is. A hardpoint workbook is measured in vehicle coordinates
+/// with z up from the ground, so this is not a guess so much as the frame's own
+/// definition -- and a corner whose workbook says otherwise names a contact
+/// patch, which is taken over it.
+constexpr double kGroundZ = 0.0;
+
+/// The direction of an anti-roll bar's axis, @p along it either way, turned so
+/// that the two sides of an axle measure their arms the same way round.
+///
+/// A mirrored side does not want the mirror image of the near side's direction:
+/// mirroring turns a rotation the other way, and a pure bump would then read as
+/// the arms twisting against each other. It wants that image reversed -- which,
+/// for a bar straight across the car, is the same +y both sides already use. So
+/// the direction is seen from the left (a right side's is mirrored over),
+/// pointed left, and taken back to this side as the reversed mirror image.
+Vec3 barAxisPointingLeft(const Vec3& along, double side)
+{
+    const Vec3 unit = along.normalized();
+    Vec3 seenFromLeft(unit.x, unit.y * side, unit.z);
+    // A bar along the car has no left to point to; forward decides instead, so
+    // both sides still agree.
+    const bool reversed = std::abs(seenFromLeft.y) > 1e-9 ? seenFromLeft.y < 0.0
+                                                          : seenFromLeft.x < 0.0;
+    if (reversed) seenFromLeft = seenFromLeft * -1.0;
+    return side > 0.0 ? seenFromLeft : Vec3(-seenFromLeft.x, seenFromLeft.y, -seenFromLeft.z);
+}
+
+double pickWheelHeight(const CornerPose& pose) { return pose.wheelCenter.z; }
+double pickContactHeight(const CornerPose& pose) { return pose.contactPatch.z; }
+
+} // namespace
+
+std::optional<ReferenceCornerSolver> ReferenceCornerSolver::bind(const MechanismTemplate& mechanism,
+                                               const HardpointTable& table, QString* error,
+                                               const std::optional<StaticAlignment>& alignment)
+{
+    const MechanismCoverage coverage = coverMechanism(mechanism, table);
+    if (coverage.absent) {
+        if (error) *error = tr("None of this corner's hardpoints are in the table.");
+        return std::nullopt;
+    }
+    if (!coverage.missingRequired.isEmpty()) {
+        if (error)
+            *error = tr("Cannot solve this corner: the table has no %1.")
+                         .arg(coverage.missingRequired.join(QStringLiteral(", ")));
+        return std::nullopt;
+    }
+
+    ReferenceCornerSolver solver;
+    solver.m_mechanism = mechanism;
+
+    const auto at = [&table](const QString& name) {
+        const Hardpoint* point = table.find(name);
+        return point ? Vec3(point->coord[0], point->coord[1], point->coord[2]) : Vec3();
+    };
+    const auto has = [&table](const QString& name) {
+        return !name.isEmpty() && table.indexOf(name) >= 0;
+    };
+
+    solver.m_lowerFront = at(mechanism.lowerFront);
+    solver.m_lowerRear = at(mechanism.lowerRear);
+    solver.m_lowerOuter = at(mechanism.lowerOuter);
+    solver.m_upperFront = at(mechanism.upperFront);
+    solver.m_upperRear = at(mechanism.upperRear);
+    solver.m_upperOuter = at(mechanism.upperOuter);
+    solver.m_tieRodInboard = at(mechanism.tieRodInboard);
+    solver.m_tieRodOutboard = at(mechanism.tieRodOutboard);
+    solver.m_wheelCenter = at(mechanism.wheelCenter);
+
+    // A rack drives this corner only if the template says one does, and only
+    // through the point this solve knows how to move. Anything else is caught
+    // where there is somewhere to report it -- AxleSolver::build().
+    solver.m_steered = !mechanism.steeringRack.isEmpty()
+                       && mechanism.steeringRack == mechanism.tieRodInboard;
+
+    solver.m_hasWheelAxis = has(mechanism.wheelAxis);
+    if (solver.m_hasWheelAxis) solver.m_wheelAxisPoint = at(mechanism.wheelAxis);
+
+    solver.m_hasContactPatch = has(mechanism.contactPatch);
+    if (solver.m_hasContactPatch) solver.m_contactPatch = at(mechanism.contactPatch);
+
+    solver.m_hasRocker = mechanism.hasRocker() && has(mechanism.pushrodOuter)
+                         && has(mechanism.pushrodInner) && has(mechanism.rockerPivot)
+                         && has(mechanism.rockerAxis);
+    if (solver.m_hasRocker) {
+        solver.m_pushrodOuter = at(mechanism.pushrodOuter);
+        solver.m_pushrodInner = at(mechanism.pushrodInner);
+        solver.m_rockerPivot = at(mechanism.rockerPivot);
+        solver.m_rockerAxisPoint = at(mechanism.rockerAxis);
+    }
+
+    // The damper hangs off the rocker, so without one there is nothing to
+    // measure its length against.
+    solver.m_hasDamper = solver.m_hasRocker && has(mechanism.damperInboard)
+                         && has(mechanism.damperOutboard);
+    if (solver.m_hasDamper) {
+        solver.m_damperInboard = at(mechanism.damperInboard);
+        solver.m_damperOutboard = at(mechanism.damperOutboard);
+    }
+
+    // A drop link on the rocker needs the rocker bound; one on the wheel's own
+    // members does not, and is checked against the rocker further down.
+    solver.m_hasAntiRoll = mechanism.hasAntiRoll() && has(mechanism.antiRollDropLinkOuter)
+                           && has(mechanism.antiRollArmEnd) && has(mechanism.antiRollArmRoot);
+    if (solver.m_hasAntiRoll) {
+        solver.m_antiRollDropLinkOuter = at(mechanism.antiRollDropLinkOuter);
+        solver.m_antiRollArmEnd = at(mechanism.antiRollArmEnd);
+        solver.m_antiRollArmRoot = at(mechanism.antiRollArmRoot);
+        solver.m_antiRollAxisFromBearing = has(mechanism.antiRollBearing);
+        if (solver.m_antiRollAxisFromBearing)
+            solver.m_antiRollBearing = at(mechanism.antiRollBearing);
+    }
+
+    for (const QString& name : mechanism.carried)
+        if (has(name)) solver.m_carried.push_back(PosedPoint{ name, at(name) });
+
+    // +y is left in ISO 8855, and that is the whole of what decides which way
+    // camber and toe are signed.
+    solver.m_left = solver.m_wheelCenter.y >= 0.0;
+
+    solver.m_lowerAxis = axisThrough(solver.m_lowerFront, solver.m_lowerRear);
+    solver.m_upperAxis = axisThrough(solver.m_upperFront, solver.m_upperRear);
+    if (!solver.m_lowerAxis.isValid() || !solver.m_upperAxis.isValid()) {
+        if (error)
+            *error = tr("A wishbone's two chassis pivots are at the same place, so it has no "
+                        "axis to turn about.");
+        return std::nullopt;
+    }
+    solver.m_upperCircle = circleAbout(solver.m_upperOuter, solver.m_upperAxis);
+    if (!solver.m_upperCircle.isValid()) {
+        if (error) *error = tr("The upper ball joint sits on its own pivot axis.");
+        return std::nullopt;
+    }
+
+    solver.m_uprightLowerUpper = distance(solver.m_lowerOuter, solver.m_upperOuter);
+    solver.m_uprightLowerTie = distance(solver.m_lowerOuter, solver.m_tieRodOutboard);
+    solver.m_uprightUpperTie = distance(solver.m_upperOuter, solver.m_tieRodOutboard);
+    solver.m_tieRodLength = distance(solver.m_tieRodInboard, solver.m_tieRodOutboard);
+
+    if (solver.m_hasRocker) {
+        solver.m_rockerAxis = axisThrough(solver.m_rockerPivot, solver.m_rockerAxisPoint);
+        solver.m_pushrodInnerCircle = circleAbout(solver.m_pushrodInner, solver.m_rockerAxis);
+        solver.m_pushrodLength = distance(solver.m_pushrodOuter, solver.m_pushrodInner);
+        if (!solver.m_pushrodInnerCircle.isValid()) solver.m_hasRocker = false;
+    }
+    if (!solver.m_hasRocker) {
+        solver.m_hasDamper = false;
+        if (mechanism.antiRollMount == DropLinkMount::Rocker) solver.m_hasAntiRoll = false;
+    }
+
+    if (solver.m_hasAntiRoll) {
+        // A bearing in the table says where the bar's axis is outright. Without
+        // one, a U-bar runs across the car, so until the far side's arm root
+        // gives the real axis y is the right guess and not much of one.
+        const Vec3 alongBar = solver.m_antiRollAxisFromBearing
+                                  ? solver.m_antiRollBearing - solver.m_antiRollArmRoot
+                                  : Vec3();
+        if (alongBar.lengthSquared() < 1e-12) solver.m_antiRollAxisFromBearing = false;
+        const Vec3 direction = solver.m_antiRollAxisFromBearing
+                                   ? barAxisPointingLeft(alongBar, solver.side())
+                                   : Vec3(0, 1, 0);
+        solver.m_antiRollAxis =
+            axisThrough(solver.m_antiRollArmRoot, solver.m_antiRollArmRoot + direction);
+        solver.m_antiRollCircle = circleAbout(solver.m_antiRollArmEnd, solver.m_antiRollAxis);
+        solver.m_dropLinkLength =
+            distance(solver.m_antiRollDropLinkOuter, solver.m_antiRollArmEnd);
+        if (!solver.m_antiRollCircle.isValid()) solver.m_hasAntiRoll = false;
+    }
+
+    // Which way the wheel points, as a unit vector outboard along its own axis of
+    // rotation.
+    //
+    // Static angles the project states say it outright, and win: they are the
+    // number the user typed, and a point that disagrees with them is a point
+    // nobody has moved since. Next, a second point on the axis says it, camber
+    // and toe together -- the only way a hardpoint table can state static toe
+    // at all. Without either it is inferred the old way, from the contact patch
+    // sitting under the wheel centre: that carries the workbook's static camber
+    // and assumes zero toe, which is why toe is also reported as a change from
+    // this position.
+    Vec3 spin;
+    if (alignment) {
+        spin = spinAxisFor(*alignment, solver.side());
+        solver.m_attitude = WheelAttitude::Stated;
+    } else if (solver.m_hasWheelAxis) {
+        spin = (solver.m_wheelAxisPoint - solver.m_wheelCenter).normalized();
+        // Either end of the axle may have been measured; outboard is the end the
+        // measures are read against.
+        if (spin.y * solver.side() < 0.0) spin = spin * -1.0;
+        solver.m_attitude = WheelAttitude::WheelAxis;
+    } else if (solver.m_hasContactPatch) {
+        const Vec3 up = solver.m_wheelCenter - solver.m_contactPatch;
+        spin = cross(up, Vec3(1, 0, 0)).normalized() * solver.side();
+        solver.m_attitude = WheelAttitude::ContactPatch;
+    }
+    if (spin.lengthSquared() < 0.5) {
+        spin = Vec3(0, solver.side(), 0);
+        solver.m_attitude = alignment ? WheelAttitude::Stated : WheelAttitude::Upright;
+    }
+    solver.m_designSpinAxis = spin;
+
+    // With the angles stated, a wheel axis point in the table is one more point
+    // on the upright, and it is carried on the axis those angles give -- as far
+    // from the centre as the table has it, on the same side -- so that what is
+    // drawn while simulating is the axis the numbers are actually read off.
+    if (alignment && solver.m_hasWheelAxis) {
+        const Vec3 offset = solver.m_wheelAxisPoint - solver.m_wheelCenter;
+        const double reach = dot(offset, spin) < 0.0 ? -offset.length() : offset.length();
+        solver.m_wheelAxisPoint = solver.m_wheelCenter + spin * reach;
+    }
+
+    // The tyre radius, which is what turns a wheel centre and an axis into a
+    // contact patch: the drop from the centre down the wheel's own plane onto
+    // the road. What a patch in the workbook supplies is the height of that
+    // road -- a table measured from a chassis datum rather than from the ground
+    // has no other way of saying where the ground is -- and not the patch's own
+    // position, which under a cambered wheel is not where the tyre touches.
+    //
+    // With no axis point named the two come to the same thing: the drop is then
+    // straight down the line the patch itself defined, so the patch is
+    // reproduced exactly and nothing about an older project moves.
+    const double groundZ = solver.m_hasContactPatch ? solver.m_contactPatch.z : kGroundZ;
+    bool grounded = false;
+    solver.m_tireRadius = tireRadiusToGround(solver.m_wheelCenter, spin, groundZ, &grounded);
+    solver.m_hasGround = grounded;
+
+    // Computed from here on, at design as well as through the travel, so that
+    // the rise a roll sweep drives is measured against the same thing it moves.
+    if (grounded)
+        solver.m_contactPatch = contactPatchFor(solver.m_wheelCenter, spin, solver.m_tireRadius);
+    else if (!solver.m_hasContactPatch)
+        solver.m_contactPatch = solver.m_wheelCenter - Vec3(0, 0, 1);
+
+    CornerPose design;
+    if (!solver.solveAt(0.0, 0.0, nullptr, &design)) {
+        if (error)
+            *error = design.error.isEmpty()
+                         ? tr("This corner does not assemble at the coordinates given.")
+                         : design.error;
+        return std::nullopt;
+    }
+    // Measured against itself, so every change is zero here by construction.
+    design.camberChange = 0.0;
+    design.toeChange = 0.0;
+    design.damperTravel = 0.0;
+    solver.m_design = design;
+
+    return solver;
+}
+
+void ReferenceCornerSolver::setAntiRollAxis(const Vec3& direction)
+{
+    if (!m_hasAntiRoll || m_antiRollAxisFromBearing) return;
+    const Axis axis = axisThrough(m_antiRollArmRoot, m_antiRollArmRoot + direction);
+    if (!axis.isValid()) return;
+    const Circle circle = circleAbout(m_antiRollArmEnd, axis);
+    if (!circle.isValid()) return;
+    m_antiRollAxis = axis;
+    m_antiRollCircle = circle;
+    // The design pose's bar angle is zero either way, so nothing else has to be
+    // rebuilt: the axis only ever enters through this circle.
+}
+
+bool ReferenceCornerSolver::solveAt(double angle, double rackTravel, const CornerPose* previous,
+                           CornerPose* out) const
+{
+    CornerPose pose;
+    pose.armAngle = angle;
+    // An axle with no rack ignores rack travel rather than pretending to steer.
+    // The pose reports what actually happened, not what was asked for.
+    const double rack = m_steered ? rackTravel : 0.0;
+    pose.rackTravel = rack;
+
+    Vec3 candidates[2];
+    bool ok = false;
+
+    // 1. The lower ball joint simply turns with its wishbone. This is the one
+    //    free variable; everything below follows from it.
+    pose.lowerOuter = rotateAbout(m_lowerOuter, m_lowerAxis, angle);
+
+    // 2. The upper ball joint is on its own circle and a fixed distance from the
+    //    lower one, because the upright between them is rigid.
+    int count = intersectCircleSphere(m_upperCircle, pose.lowerOuter, m_uprightLowerUpper,
+                                      candidates);
+    if (count == 0) {
+        pose.error = tr("The upper wishbone cannot reach the upright here.");
+        *out = pose;
+        return false;
+    }
+    pose.upperOuter = nearestTo(previous ? previous->upperOuter : m_upperOuter, candidates, count,
+                                &ok);
+
+    // 3. The outer tie rod end: rigid with the two ball joints, and a tie rod's
+    //    length from the rack.
+    pose.tieRodInboard = m_tieRodInboard + Vec3(0.0, rack, 0.0);
+    count = trilaterate(pose.lowerOuter, m_uprightLowerTie, pose.upperOuter, m_uprightUpperTie,
+                        pose.tieRodInboard, m_tieRodLength, candidates);
+    if (count == 0) {
+        pose.error = tr("The tie rod cannot reach the upright here.");
+        *out = pose;
+        return false;
+    }
+    pose.tieRodOutboard = nearestTo(previous ? previous->tieRodOutboard : m_tieRodOutboard,
+                                    candidates, count, &ok);
+
+    // 4. Three joints of one rigid body place the whole of it, wheel included.
+    const Vec3 from[3] = { m_lowerOuter, m_upperOuter, m_tieRodOutboard };
+    const Vec3 to[3] = { pose.lowerOuter, pose.upperOuter, pose.tieRodOutboard };
+    const Rigid upright = rigidFromTriangle(from, to, &ok);
+    if (!ok) {
+        pose.error = tr("The upright's three joints are in a straight line, so its orientation "
+                        "is not determined.");
+        *out = pose;
+        return false;
+    }
+    pose.wheelCenter = upright.map(m_wheelCenter);
+    pose.spinAxis = upright.rotate(m_designSpinAxis).normalized();
+    pose.uprightMotion = upright;
+    pose.wheelCenterName = m_mechanism.wheelCenter;
+
+    // The wheel is rigid with the upright; the contact patch is not. It is the
+    // bottom of a tyre that stays on the road, so it is recomputed from the
+    // wheel's new attitude rather than carried round with the upright -- which
+    // is what makes it walk outboard as the wheel gains camber instead of
+    // lifting off the ground with it.
+    pose.contactPatch = m_hasGround
+                            ? contactPatchFor(pose.wheelCenter, pose.spinAxis, m_tireRadius)
+                            : upright.map(m_contactPatch);
+
+    // 5. How far the upper wishbone turned, which is what carries the pushrod.
+    pose.upperArmAngle = m_upperCircle.angleOf(pose.upperOuter);
+
+    if (m_hasRocker) {
+        switch (m_mechanism.pushrodMount) {
+        case PushrodMount::UpperArm:
+            pose.pushrodOuter = rotateAbout(m_pushrodOuter, m_upperAxis, pose.upperArmAngle);
+            break;
+        case PushrodMount::LowerArm:
+            pose.pushrodOuter = rotateAbout(m_pushrodOuter, m_lowerAxis, angle);
+            break;
+        case PushrodMount::Upright:
+            pose.pushrodOuter = upright.map(m_pushrodOuter);
+            break;
+        }
+
+        // 6. The rocker turns until its pushrod pickup is a pushrod away.
+        count = intersectCircleSphere(m_pushrodInnerCircle, pose.pushrodOuter, m_pushrodLength,
+                                      candidates);
+        if (count == 0) {
+            pose.error = tr("The pushrod cannot reach the rocker here.");
+            *out = pose;
+            return false;
+        }
+        pose.pushrodInner = nearestTo(previous ? previous->pushrodInner : m_pushrodInner,
+                                      candidates, count, &ok);
+        pose.rockerAngle = m_pushrodInnerCircle.angleOf(pose.pushrodInner);
+
+        if (m_hasDamper)
+            pose.damperOutboard = rotateAbout(m_damperOutboard, m_rockerAxis, pose.rockerAngle);
+    }
+
+    // 7. The bar's arm turns until it is a drop link away from wherever the
+    //    drop link's upper end has been carried.
+    if (m_hasAntiRoll && !solveAntiRoll(upright, previous, &pose)) {
+        *out = pose;
+        return false;
+    }
+
+    const auto add = [&pose](const QString& name, const Vec3& position) {
+        if (!name.isEmpty()) pose.points.push_back(PosedPoint{ name, position });
+    };
+    add(m_mechanism.lowerOuter, pose.lowerOuter);
+    add(m_mechanism.upperOuter, pose.upperOuter);
+    add(m_mechanism.tieRodInboard, pose.tieRodInboard);
+    add(m_mechanism.tieRodOutboard, pose.tieRodOutboard);
+    add(m_mechanism.wheelCenter, pose.wheelCenter);
+    if (m_hasWheelAxis) add(m_mechanism.wheelAxis, upright.map(m_wheelAxisPoint));
+    if (m_hasContactPatch) add(m_mechanism.contactPatch, pose.contactPatch);
+    for (const PosedPoint& carried : m_carried) add(carried.name, upright.map(carried.position));
+    if (m_hasRocker) {
+        add(m_mechanism.pushrodOuter, pose.pushrodOuter);
+        add(m_mechanism.pushrodInner, pose.pushrodInner);
+    }
+    if (m_hasDamper) add(m_mechanism.damperOutboard, pose.damperOutboard);
+    if (m_hasAntiRoll) {
+        add(m_mechanism.antiRollDropLinkOuter, pose.antiRollDropLinkOuter);
+        add(m_mechanism.antiRollArmEnd, pose.antiRollArmEnd);
+    }
+
+    pose.hasDamper = m_hasDamper;
+    pose.hasAntiRoll = m_hasAntiRoll;
+    pose.valid = true;
+    measure(&pose);
+    *out = pose;
+    return true;
+}
+
+Vec3 ReferenceCornerSolver::dropLinkOuterAt(const CornerPose& pose, const Rigid& upright) const
+{
+    switch (m_mechanism.antiRollMount) {
+    case DropLinkMount::Rocker:
+        return rotateAbout(m_antiRollDropLinkOuter, m_rockerAxis, pose.rockerAngle);
+    case DropLinkMount::UpperArm:
+        return rotateAbout(m_antiRollDropLinkOuter, m_upperAxis, pose.upperArmAngle);
+    case DropLinkMount::LowerArm:
+        return rotateAbout(m_antiRollDropLinkOuter, m_lowerAxis, pose.armAngle);
+    case DropLinkMount::Upright: return upright.map(m_antiRollDropLinkOuter);
+    }
+    return m_antiRollDropLinkOuter;
+}
+
+bool ReferenceCornerSolver::solveAntiRoll(const Rigid& upright, const CornerPose* previous,
+                                 CornerPose* pose) const
+{
+    pose->antiRollDropLinkOuter = dropLinkOuterAt(*pose, upright);
+
+    Vec3 candidates[2];
+    const int count = intersectCircleSphere(m_antiRollCircle, pose->antiRollDropLinkOuter,
+                                            m_dropLinkLength, candidates);
+    if (count == 0) {
+        pose->error = tr("The anti-roll drop link cannot reach the bar here.");
+        return false;
+    }
+    bool ok = false;
+    pose->antiRollArmEnd = nearestTo(previous ? previous->antiRollArmEnd : m_antiRollArmEnd,
+                                     candidates, count, &ok);
+    pose->antiRollArmAngle = m_antiRollCircle.angleOf(pose->antiRollArmEnd);
+    return true;
+}
+
+void ReferenceCornerSolver::measure(CornerPose* pose) const
+{
+    const double s = side();
+
+    // Camber and toe are the spin axis in two different views. The axis points
+    // outboard, so the same two formulas do both sides.
+    const Vec3 n = pose->spinAxis;
+    pose->camber = -std::asin(std::clamp(n.z, -1.0, 1.0)) * kRadToDeg;
+    pose->camberToGround = pose->camber;
+    pose->toe = std::atan2(n.x, s * n.y) * kRadToDeg;
+    pose->camberChange = pose->camber - m_design.camber;
+    pose->toeChange = pose->toe - m_design.toe;
+
+    // The steering axis runs from the lower ball joint up to the upper one.
+    const Vec3 steering = pose->upperOuter - pose->lowerOuter;
+    pose->caster = std::atan2(-steering.x, steering.z) * kRadToDeg;
+    pose->kingpinInclination = std::atan2(-s * steering.y, steering.z) * kRadToDeg;
+
+    pose->wheelTravel = pose->wheelCenter.z - m_wheelCenter.z;
+    pose->contactPatchRise = pose->contactPatch.z - m_contactPatch.z;
+
+    // Track and wheelbase are read at the ground when there is a contact patch
+    // to read them at -- named or computed -- and at the wheel centre when the
+    // wheel is lying so flat that there is none.
+    const Vec3& ground = m_hasGround ? pose->contactPatch : pose->wheelCenter;
+    const Vec3& groundDesign = m_hasGround ? m_contactPatch : m_wheelCenter;
+    pose->halfTrackChange = s * (ground.y - groundDesign.y);
+    pose->wheelbaseChange = ground.x - groundDesign.x;
+
+    bool ok = false;
+    const Vec3 pierce = linePlaneCrossing(pose->lowerOuter, pose->upperOuter, 2, ground.z, &ok);
+    if (ok) {
+        pose->scrubRadius = s * (ground.y - pierce.y);
+        pose->mechanicalTrail = pierce.x - ground.x;
+    }
+
+    if (m_hasDamper) {
+        pose->damperLength = distance(pose->damperOutboard, m_damperInboard);
+        pose->damperTravel = pose->damperLength - m_design.damperLength;
+    }
+
+    // The front-view instant centre, the way RCVD constructs it. A wishbone
+    // moves its ball joint at right angles to the plane through that joint and
+    // the arm's pivot axis, so the upright turns, for an instant, about the line
+    // the two arm planes share; the front-view centre is where that line pierces
+    // the transverse plane through the wheel centre. The hardpoint generator
+    // places its points by the same construction, so the two are inverses here
+    // as well.
+    //
+    // It is not the same as drawing each arm from its pivot to its ball joint
+    // and flattening the result, which is what this used to do: that ignores
+    // how far a joint sits ahead of or behind the wheel centre, and on an arm
+    // whose pivot axis is inclined a caster's worth of offset moved a real
+    // car's roll centre from 10 mm to 6.
+    const Vec3 lowerNormal = cross(m_lowerRear - m_lowerFront, pose->lowerOuter - m_lowerFront);
+    const Vec3 upperNormal = cross(m_upperRear - m_upperFront, pose->upperOuter - m_upperFront);
+    bool centerOk = false;
+    pose->instantCenter = planesCrossing(lowerNormal, m_lowerFront, upperNormal, m_upperFront, 0,
+                                         pose->wheelCenter.x, &centerOk);
+    pose->instantCenterValid = centerOk;
+}
+
+CornerPose ReferenceCornerSolver::driveTo(double value, double rackTravel, const CornerPose* previous,
+                                 double (*pick)(const CornerPose&)) const
+{
+    CornerPose pose;
+    double angle = previous && previous->valid ? previous->armAngle : 0.0;
+    if (!solveAt(angle, rackTravel, previous, &pose)) return pose;
+
+    double residual = pick(pose) - value;
+    constexpr double kProbe = 1e-5;
+
+    for (int iteration = 0; iteration < 40 && std::abs(residual) > kTargetTolerance; ++iteration) {
+        // The slope of height against arm angle, by a probe to whichever side
+        // assembles. Near a travel limit only one of them does.
+        CornerPose probe;
+        double slope = 0.0;
+        if (solveAt(angle + kProbe, rackTravel, &pose, &probe)) {
+            slope = (pick(probe) - pick(pose)) / kProbe;
+        } else if (solveAt(angle - kProbe, rackTravel, &pose, &probe)) {
+            slope = (pick(pose) - pick(probe)) / kProbe;
+        } else {
+            pose.valid = false;
+            pose.error = tr("The mechanism jams before it reaches that position.");
+            return pose;
+        }
+        if (std::abs(slope) < 1e-12) break;
+
+        double step = std::clamp(-residual / slope, -kMaxStep, kMaxStep);
+
+        // Back off until it assembles again. A step that overshoots the end of
+        // the travel is the normal way to find where that end is.
+        CornerPose next;
+        bool moved = false;
+        for (int backoff = 0; backoff < 30; ++backoff) {
+            if (solveAt(angle + step, rackTravel, &pose, &next)) {
+                moved = true;
+                break;
+            }
+            step *= 0.5;
+        }
+        if (!moved) {
+            pose.valid = false;
+            pose.error = tr("The mechanism jams before it reaches that position.");
+            return pose;
+        }
+
+        angle += step;
+        pose = next;
+        residual = pick(pose) - value;
+    }
+
+    if (std::abs(residual) > 1e-4) {
+        pose.valid = false;
+        pose.error = tr("That position is outside this corner's travel.");
+    }
+    return pose;
+}
+
+CornerPose ReferenceCornerSolver::poseAtArmAngle(double angle, double rackTravel,
+                                        const CornerPose* previous) const
+{
+    CornerPose pose;
+    solveAt(angle, rackTravel, previous, &pose);
+    return pose;
+}
+
+CornerPose ReferenceCornerSolver::poseAtWheelTravel(double travel, double rackTravel,
+                                           const CornerPose* previous) const
+{
+    return driveTo(m_wheelCenter.z + travel, rackTravel, previous, &pickWheelHeight);
+}
+
+CornerPose ReferenceCornerSolver::poseAtContactPatchRise(double rise, double rackTravel,
+                                                const CornerPose* previous) const
+{
+    return driveTo(m_contactPatch.z + rise, rackTravel, previous, &pickContactHeight);
+}
+
+} // namespace suspkin
