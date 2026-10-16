@@ -101,8 +101,10 @@ public:
     /// same reason it drops the parts.
     void setGroundedPoints(const std::vector<bool>& grounded);
     /// One flag per hardpoint: a point that is not moved on its own -- a
-    /// ghost, the mirror of another. It gets no arrows and no X/Y/Z field, and
-    /// is drawn dimmed. Dropped with the points, like the grounded flags.
+    /// ghost, the mirror of another. It is drawn dimmed and nothing more: it
+    /// cannot be hovered, picked or selected, so its name never reaches the
+    /// status line or a command. Dropped with the points, like the grounded
+    /// flags.
     void setLockedPoints(const std::vector<bool>& locked);
     /// Whether the locked points -- the mirrored side -- are drawn at all.
     /// Hidden, they are neither drawn, labelled nor picked, and neither is a

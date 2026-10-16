@@ -148,8 +148,10 @@ public:
     /// that can disagree with the store.
     std::vector<ConfigIssue> issuesAt(int row) const;
 
-    /// How many points have been given a type, and how many have something
-    /// worth saying about them. For the panel's summary line.
+    /// How many points the table lists, how many of those have been given a
+    /// type, and how many have something worth saying about them. For the
+    /// panel's summary line; ghosts are not listed, so not counted.
+    int listedCount() const;
     int configuredCount() const;
     int issueCount() const;
 

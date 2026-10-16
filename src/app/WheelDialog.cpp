@@ -1,6 +1,7 @@
 #include "app/WheelDialog.h"
 
 #include "io/MeshImport.h"
+#include "model/HardpointMirror.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -37,7 +38,14 @@ WheelDialog::WheelDialog(const HardpointTable& table, const WheelSpec& spec,
     for (const WheelCorner corner : kWheelCorners) {
         auto* combo = new QComboBox(cornerBox);
         combo->addItem(tr("- not used -"), QString::fromLatin1(kNoPoint));
-        for (const Hardpoint& point : m_table.points) combo->addItem(point.name, point.name);
+        for (int row = 0; row < static_cast<int>(m_table.points.size()); ++row) {
+            const Hardpoint& point = m_table.points[static_cast<std::size_t>(row)];
+            // A ghost is the same point on the far side, and is called so.
+            const QString shown = isGhostAt(m_table, row)
+                                      ? tr("%1 (mirrored side)").arg(point.mirrorOf)
+                                      : point.name;
+            combo->addItem(shown, point.name);
+        }
         combo->setToolTip(tr("The hardpoint at the centre of this wheel. The models are placed "
                              "there, and follow it when it moves."));
         m_corners[static_cast<std::size_t>(corner)] = combo;

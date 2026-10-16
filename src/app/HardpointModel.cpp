@@ -191,11 +191,19 @@ std::vector<ConfigIssue> HardpointModel::issuesAt(int row) const
     return issues;
 }
 
+int HardpointModel::listedCount() const
+{
+    int count = 0;
+    for (int row = 0; row < rowCount(); ++row)
+        if (!isGhost(row)) ++count;
+    return count;
+}
+
 int HardpointModel::configuredCount() const
 {
     int count = 0;
-    for (const Hardpoint& point : m_table.points)
-        if (m_config.value(point.name).type != PointType::Unassigned) ++count;
+    for (int row = 0; row < rowCount(); ++row)
+        if (!isGhost(row) && configAt(row).type != PointType::Unassigned) ++count;
     return count;
 }
 
@@ -203,7 +211,7 @@ int HardpointModel::issueCount() const
 {
     int count = 0;
     for (int row = 0; row < rowCount(); ++row)
-        if (!issuesAt(row).empty()) ++count;
+        if (!isGhost(row) && !issuesAt(row).empty()) ++count;
     return count;
 }
 

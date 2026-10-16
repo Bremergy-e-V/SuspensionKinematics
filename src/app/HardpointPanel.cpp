@@ -477,7 +477,7 @@ void HardpointPanel::updateStatusLine()
         return;
     }
 
-    const int rows = m_model->rowCount();
+    const int rows = m_model->listedCount();
     QString summary = tr("No hardpoints imported yet.");
     if (rows > 0) {
         summary = tr("%1 point(s)  -  %2 typed").arg(rows).arg(m_model->configuredCount());

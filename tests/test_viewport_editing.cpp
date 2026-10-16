@@ -312,6 +312,11 @@ void TestViewportEditing::aGhostHasNoArrowsAndNoKeys()
     const QPoint onArm = scene.onArm(1, 45.0);
     scene.viewport.setLockedPoints({ true, false });
     QVERIFY(scene.viewport.isLockedPoint(0));
+    // Shown, and nothing more: a ghost is never selected, so its name never
+    // reaches a command or the status line.
+    QVERIFY(!scene.viewport.selectedHardpoints().contains(0));
+    scene.viewport.setSelectedHardpoints({ 0 }, 0);
+    QVERIFY(scene.viewport.selectedHardpoints().isEmpty());
 
     QSignalSpy moved(&scene.viewport, &ViewportWidget::hardpointMoved);
     QSignalSpy asked(&scene.viewport, &ViewportWidget::coordinateEntryRequested);

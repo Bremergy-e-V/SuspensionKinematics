@@ -389,8 +389,9 @@ state and a drag is not.
   -- cell, arrow, X/Y/Z, `movePoint()`, a rigid part -- rewrites it in the same
   edit, and it cannot be moved on its own. Its coordinate cells are not
   editable and are drawn in the palette's disabled text; its marker is dimmed
-  and gets no arrows and no X/Y/Z field (`ViewportWidget::setLockedPoints()`,
-  synced with the grounded flags). A hand edit a ghost carried from before is
+  and is never hovered, picked or selected (`ViewportWidget::setLockedPoints()`,
+  synced with the grounded flags) -- the viewport is the only place a ghost
+  shows, so its name reaches no command, status line or count. A hand edit a ghost carried from before is
   put back on the reflection by `completeMirrors()`. Deleting the source
   deletes its ghosts (`removePoints()`), and renaming it renames a ghost the
   mirror rule named, or the far side would stop resolving.

@@ -293,6 +293,9 @@ void ViewportWidget::setLockedPoints(const std::vector<bool>& locked)
     if (locked == m_locked) return;
     m_locked = locked;
     if (m_drag == Drag::Move && isLockedPoint(m_selectedPoint)) cancelMove();
+    if (isLockedPoint(m_hoveredPoint)) m_hoveredPoint = -1;
+    // A selection made before the flags arrived may hold a ghost.
+    setSelectedHardpoints(m_selection, m_selectedPoint);
     if (!m_lockedShown) rebuildLinkageVertices();
     update();
 }
@@ -301,7 +304,6 @@ void ViewportWidget::setLockedPointsShown(bool shown)
 {
     if (m_lockedShown == shown) return;
     m_lockedShown = shown;
-    if (!shown && isLockedPoint(m_hoveredPoint)) m_hoveredPoint = -1;
     rebuildLinkageVertices();
     update();
 }
@@ -453,7 +455,8 @@ void ViewportWidget::setSelectedHardpoints(const QList<int>& selection, int curr
     const int count = static_cast<int>(m_hardpoints.size());
     QList<int> kept;
     for (const int index : selection)
-        if (index >= 0 && index < count && !kept.contains(index)) kept.append(index);
+        if (index >= 0 && index < count && !isLockedPoint(index) && !kept.contains(index))
+            kept.append(index);
     const int centred = kept.contains(current) ? current : (kept.isEmpty() ? -1 : kept.last());
 
     if (kept == m_selection && centred == m_selectedPoint) return;
@@ -841,8 +844,7 @@ void ViewportWidget::renderHardpoints(const QMatrix4x4& mvp)
         }
         if (m_hoveredPoint >= 0 && !m_selection.contains(m_hoveredPoint))
             drawMarker(m_hoveredPoint, kHoverColor, kHighlightSizePx);
-        for (const int index : m_selection)
-            if (!isHiddenPoint(index)) drawMarker(index, kSelectedColor, kHighlightSizePx);
+        for (const int index : m_selection) drawMarker(index, kSelectedColor, kHighlightSizePx);
     }
 
     m_pointProgram->release();
@@ -873,7 +875,7 @@ int ViewportWidget::hardpointAt(const QPoint& pos) const
     float bestDepth = std::numeric_limits<float>::max();
 
     for (std::size_t i = 0; i < m_hardpoints.size(); ++i) {
-        if (isHiddenPoint(static_cast<int>(i))) continue;
+        if (isLockedPoint(static_cast<int>(i))) continue;
         QPointF screen;
         float depth = 0.0f;
         if (!project(viewProjection, m_hardpoints[i], &screen, &depth)) continue;
