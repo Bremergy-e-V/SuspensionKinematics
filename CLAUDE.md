@@ -510,7 +510,8 @@ to the damper's eye at an angle from L1, beta at the eye and Ld for the damper,
 and an optional L3 for a drop link. Every arm lies in the plane square to the
 axis, and every angle is positive turning *inboard*, so one set of numbers means
 the same rocker on either side. The pushrod itself -- its length and alpha -- is
-not set here: its outer end is on a wishbone and is placed by hand.
+not set here: its outer end is on a wishbone and is placed by Linkage > Pushrod
+and Damper (see below), or by hand.
 
 - **The axis turns the rocker as one body**: a rocker lying along the car with
   up straight up, turned by the yaw and then tilted (`frameOf()`). "Up", what
@@ -540,6 +541,33 @@ not set here: its outer end is on a wishbone and is placed by hand.
   an existing hand-placed rocker back as a design -- so ticking it does not
   first throw it somewhere else. Placing what was read back moves nothing; a
   test says so.
+
+## The pushrod and the damper
+
+**Linkage > Pushrod and Damper** (`src/model/PushrodDesign.*`, core, tested;
+`src/app/PushrodDialog.*`, `features/PushrodFeature.cpp`) says, per corner, how
+the spring is worked and lays its ends out:
+
+- **Rocker**: the pushrod's outer end only, on the line from the chosen ball
+  joint to the rocker's pushrod arm (which Linkage > Rocker places first).
+- **In line**: the pushrod bolted to the damper's shaft. The chassis end is
+  found by casting a ray inboard from the ball joint at the height given
+  (`MeshQuery::castRay()`), stood off by the clearance -- or, with no chassis,
+  put at the distance from the centreline given. The pushrod's outer end goes on
+  the line from the ball joint to it, the offset inboard of the ball joint in y,
+  and the damper's eye a damper's length from the chassis end on that line.
+  The pushrod's inner end and the damper's outer end are **two coincident
+  points**, so the built-in template's pushrod and damper chains draw it with
+  no new parts; the eye is `Welded` pushrod/damper, the inner end `Dependent`.
+- **Damper only**: the damper's outer end on that line, on the wishbone.
+- Every point it places gets its settings written too (both sides), because the
+  settings are what the corner is solved from. A layout without a rocker takes
+  the rocker's pivot and axis point out of the table (and the pushrod, for
+  damper-only), makes the parts that draw them optional in the template, drops
+  that corner's rocker design, and leaves a bar that hung on the rocker in the
+  table but `Unassigned`, with a warning -- it has nothing to hang on.
+- The designs are in the manifest under `pushrods`. Previewed, one-shot and one
+  undo step ("Place pushrod"), like Generate and Rocker.
 
 ## Distance to the chassis
 

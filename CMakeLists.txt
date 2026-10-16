@@ -155,6 +155,8 @@ add_library(suspkin_core STATIC
     src/model/ChassisOffset.cpp
     src/model/RockerDesign.h
     src/model/RockerDesign.cpp
+    src/model/PushrodDesign.h
+    src/model/PushrodDesign.cpp
     src/io/LinkageTemplate.h
     src/io/LinkageTemplate.cpp
     src/io/XlsxHardpoints.h
@@ -283,6 +285,7 @@ qt_add_executable(suspkin
     src/app/features/MechanismFeature.cpp
     src/app/features/RockerFeature.cpp
     src/app/features/TemplateEditorFeature.cpp
+    src/app/features/PushrodFeature.cpp
     src/app/features/AnalysisFeature.cpp
     src/app/features/ViewFeature.cpp
     src/app/features/PanelsFeature.cpp
@@ -320,6 +323,8 @@ qt_add_executable(suspkin
     src/app/RockerDialog.cpp
     src/app/RockerSketch.h
     src/app/RockerSketch.cpp
+    src/app/PushrodDialog.h
+    src/app/PushrodDialog.cpp
     src/app/ChassisDistanceEntry.h
     src/app/ChassisDistanceEntry.cpp
     src/app/PartDialogs.h
