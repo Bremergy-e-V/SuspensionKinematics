@@ -176,13 +176,13 @@ The workbook copy is **not** touched by editing. It changes only when the user a
 
 - **Overwrite Workbook** rewrites the project's copy, then *re-reads it* so the
   baseline and the cell map are current. Skipping that re-read would append the
-  mirrored rows a second time on the next overwrite — see the test named for it.
+  new rows a second time on the next overwrite.
 - **Export Workbook As** writes elsewhere (defaulting to `importedFrom`) and leaves
   the edits pending.
 
 `writeHardpointsXlsx()` splices bytes rather than reserialising XML: cells that
 exist are patched in place, points that do not exist in the workbook (what
-mirroring and Add Point produce) are appended as new rows before `</sheetData>`,
+Add Point and the generators produce) are appended as new rows before `</sheetData>`,
 points the workbook has and the table does not have their **name and value cells
 emptied** -- never the whole `<row>`, which would take a unit or a note in the
 next column with it -- and every other ZIP member is copied through with its
@@ -204,8 +204,24 @@ there has to be at least one point before there is a workbook -- and why
 Overwrite Workbook refuses a table with every point deleted.
 
 Mirroring itself is pure and testable: `src/model/HardpointMirror.*`. A `MirrorSpec`
-(axis, naming rule, affix or find/replace) is stored in the project because it is
-the user's own naming convention.
+(axis, naming rule, affix or find/replace) is stored in the project; it names the
+far side the template resolves through `mirroredName()`.
+
+**The far side is worked out, never kept.** Since 2026-10-16 there is no Mirror
+command: `HardpointDocument::completeMirrors()` runs at the top of every
+`syncTableToViewport()` -- before the viewport takes the rows, because ghosts are
+rows the parts index -- and gives every off-plane point that is not a mirror, has
+a free mirrored name and no point already at its reflection a ghost
+(`missingMirrors()`), and puts every ghost back on its reflection. The last
+condition is what leaves a workbook that lists both sides alone. Ghosts are then
+kept out of everything the user reads or writes: the dock filters them
+(`NearSideFilter`), `pendingEdits()` and every workbook write go through
+`withoutGhosts()` -- an older workbook's `_M` rows are emptied on the next
+overwrite -- the previews of Generate, Rocker and Pushrod skip `mirrored`
+changes, and the viewport labels a ghost with its source's name. Hardpoints >
+Show Mirrored Side (`Ctrl+M`, `ViewState::mirroredSideVisible`) hides them in the
+viewport -- markers, labels, picking, segments and wheels on them -- and nothing
+else: they are still solved.
 
 ## Hardpoints: what each point is *for*
 
@@ -375,8 +391,9 @@ state and a drag is not.
   editable and are drawn in the palette's disabled text; its marker is dimmed
   and gets no arrows and no X/Y/Z field (`ViewportWidget::setLockedPoints()`,
   synced with the grounded flags). A hand edit a ghost carried from before is
-  kept until its source next moves. Delete the source and the ghost is an
-  ordinary point again.
+  put back on the reflection by `completeMirrors()`. Deleting the source
+  deletes its ghosts (`removePoints()`), and renaming it renames a ghost the
+  mirror rule named, or the far side would stop resolving.
 - The hub belongs to the marker under it (`kHubClearancePx`), or a selected
   point could never be clicked again: all three arms start there.
 - **Editing is off while the mechanism is posed** (`setPointEditingEnabled()`,
@@ -559,6 +576,12 @@ the spring is worked and lays its ends out:
   The pushrod's inner end and the damper's outer end are **two coincident
   points**, so the built-in template's pushrod and damper chains draw it with
   no new parts; the eye is `Welded` pushrod/damper, the inner end `Dependent`.
+  They are one rigid group (`pushrodGroups()`, beside `rockerGroups()` in
+  `ProjectSession::applyRigidGroups()`): dragged apart, the pushrod is free to
+  spin about its own line and the corner falls back to the roles.
+- The outer end can instead be put at a **custom offset** from the ball joint
+  (`customOutboard`, `outboardShift`: x forward, y *inboard*, z up), for a
+  pushrod that is not to point at the ball joint.
 - **Damper only**: the damper's outer end on that line, on the wishbone.
 - Every point it places gets its settings written too (both sides), because the
   settings are what the corner is solved from. A layout without a rocker takes

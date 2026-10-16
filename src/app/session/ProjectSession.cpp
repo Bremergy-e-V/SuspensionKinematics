@@ -93,8 +93,8 @@ void ProjectSession::resolveFromTable()
     const HardpointTable& table = m_hardpoints.model().table();
     m_linkage.resolve(table);
     emit partsResolved();
-    m_hardpoints.model().setMirrorAxis(m_project.mirror().axis);
-    applyRockerGroups();
+    m_hardpoints.model().setMirrorSpec(m_project.mirror());
+    applyRigidGroups();
 
     // The configuration table is resolved against the same two things the parts
     // are, so whatever changed there changed this too. What was inferred is the
@@ -111,14 +111,18 @@ void ProjectSession::resolveFromTable()
     emit resolved();
 }
 
-void ProjectSession::applyRockerGroups()
+void ProjectSession::applyRigidGroups()
 {
     // By name and resolved against the same template and table the parts are,
     // so a rename or a new template is followed the same way.
-    m_hardpoints.model().setRigidGroups(rockerGroups(m_project.rockers(),
-                                                     m_linkage.linkageTemplate(),
-                                                     m_project.mirror(),
-                                                     m_hardpoints.model().table()));
+    const LinkageTemplate& templ = m_linkage.linkageTemplate();
+    const HardpointTable& table = m_hardpoints.model().table();
+    std::vector<QStringList> groups =
+        rockerGroups(m_project.rockers(), templ, m_project.mirror(), table);
+    const std::vector<QStringList> struts =
+        pushrodGroups(m_project.pushrods(), templ, m_project.mirror(), table);
+    groups.insert(groups.end(), struts.begin(), struts.end());
+    m_hardpoints.model().setRigidGroups(std::move(groups));
 }
 
 void ProjectSession::resolveMechanism()

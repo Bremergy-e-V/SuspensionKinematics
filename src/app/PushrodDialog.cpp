@@ -70,8 +70,9 @@ PushrodDialog::PushrodDialog(const std::vector<PushrodDesign>& stored, const Lin
            "chassis end is found on the chassis at the height given -- looking inboard from the "
            "ball joint -- and stood off it by the clearance; with no chassis imported it goes "
            "at the distance from the centreline given instead. The outboard end goes on the "
-           "line from the ball joint to the chassis end, the offset inboard of the ball joint. "
-           "With a rocker the line runs to the rocker's pushrod arm."),
+           "line from the ball joint to the chassis end, the offset inboard of the ball joint "
+           "-- with a rocker the line runs to the rocker's pushrod arm -- or, when it is not to "
+           "point at the ball joint, at an offset of your own from it."),
         this);
     intro->setWordWrap(true);
 
@@ -125,7 +126,11 @@ QWidget* PushrodDialog::buildColumns(const std::vector<PushrodDesign>& stored)
     const QStringList rows = { tr("Layout"),        tr("Ball joint"),
                                tr("Chassis end height"), tr("Clearance to chassis"),
                                tr("Without a chassis, from centreline"),
-                               tr("Outboard end, inboard of the ball joint"),
+                               tr("Outboard end"),
+                               tr("On the line, inboard of the ball joint"),
+                               tr("Offset from the ball joint, forward (x)"),
+                               tr("Offset from the ball joint, inboard (y)"),
+                               tr("Offset from the ball joint, up (z)"),
                                tr("Damper length, eye to eye") };
     for (int row = 0; row < rows.size(); ++row) layout->addWidget(new QLabel(rows[row], grid), row + 1, 0);
 
@@ -155,13 +160,27 @@ QWidget* PushrodDialog::buildColumns(const std::vector<PushrodDesign>& stored)
         column.offset = spin(seed.outboardOffset, 0.0, 1000.0,
                              tr("How far inboard of the ball joint, across the car, the outboard "
                                 "end goes on its line."));
+        column.outboardMode = new QComboBox(grid);
+        column.outboardMode->addItem(tr("On the line to the inboard end"));
+        column.outboardMode->addItem(tr("Custom offset from the ball joint"));
+        column.outboardMode->setCurrentIndex(seed.customOutboard ? 1 : 0);
+        column.outboardMode->setToolTip(
+            tr("On the line, the pushrod points at the ball joint. A custom offset puts its "
+               "outboard end anywhere on the wishbone, measured from the ball joint."));
+        const QString shiftTip = tr("Where the outboard end is, measured from the ball joint. "
+                                    "Inboard is positive on either side of the car.");
+        column.shiftX = spin(seed.outboardShift.x, -1000.0, 1000.0, shiftTip);
+        column.shiftY = spin(seed.outboardShift.y, -1000.0, 1000.0, shiftTip);
+        column.shiftZ = spin(seed.outboardShift.z, -1000.0, 1000.0, shiftTip);
         column.damperLength = spin(seed.damperLength, 1.0, 2000.0,
                                    tr("The damper's length from eye to eye, laid off from the "
                                       "chassis end along the pushrod's line."));
 
         layout->addWidget(column.used, 0, col);
-        QWidget* fields[] = { column.layout, column.arm, column.height, column.clearance,
-                              column.inboardY, column.offset, column.damperLength };
+        QWidget* fields[] = { column.layout,       column.arm,    column.height,
+                              column.clearance,    column.inboardY, column.outboardMode,
+                              column.offset,       column.shiftX, column.shiftY,
+                              column.shiftZ,       column.damperLength };
         for (int row = 0; row < int(std::size(fields)); ++row) layout->addWidget(fields[row], row + 1, col);
 
         const std::size_t index = m_columns.size();
@@ -174,6 +193,10 @@ QWidget* PushrodDialog::buildColumns(const std::vector<PushrodDesign>& stored)
             m_replan->start();
         });
         connect(column.arm, &QComboBox::currentIndexChanged, this, [this] { m_replan->start(); });
+        connect(column.outboardMode, &QComboBox::currentIndexChanged, this, [this, index] {
+            enableFields(m_columns[index]);
+            m_replan->start();
+        });
         m_columns.push_back(column);
         ++col;
     }
@@ -190,7 +213,11 @@ void PushrodDialog::enableFields(const Column& column)
     column.height->setEnabled(used && onChassis);
     column.clearance->setEnabled(used && onChassis);
     column.inboardY->setEnabled(used && onChassis);
-    column.offset->setEnabled(used);
+    const bool custom = column.outboardMode->currentIndex() == 1;
+    column.outboardMode->setEnabled(used);
+    column.offset->setEnabled(used && !custom);
+    for (QDoubleSpinBox* shift : { column.shiftX, column.shiftY, column.shiftZ })
+        shift->setEnabled(used && custom);
     column.damperLength->setEnabled(used && layout == PushrodLayout::InlineDamper);
 }
 
@@ -204,6 +231,9 @@ PushrodDesign PushrodDialog::designOf(const Column& column) const
     design.clearance = column.clearance->value();
     design.inboardY = column.inboardY->value();
     design.outboardOffset = column.offset->value();
+    design.customOutboard = column.outboardMode->currentIndex() == 1;
+    design.outboardShift =
+        Vec3(column.shiftX->value(), column.shiftY->value(), column.shiftZ->value());
     design.damperLength = column.damperLength->value();
     return design;
 }
@@ -233,7 +263,16 @@ void PushrodDialog::showPlan()
         return;
     }
 
+    // The far side is worked out from the near side, and not listed.
+    const auto farSideOf = [this](const QString& name, const QStringList& names) {
+        for (const QString& other : names)
+            if (mirroredName(other, m_mirror) == name) return true;
+        return false;
+    };
+    int listed = 0;
     for (const DesignChange& change : m_plan.points.changes) {
+        if (change.mirrored) continue;
+        ++listed;
         QString what;
         switch (change.kind) {
         case DesignChange::Kind::Added: what = tr("new"); break;
@@ -243,15 +282,20 @@ void PushrodDialog::showPlan()
         if (change.handEdited) what += tr(" -- over your own edit");
         new QTreeWidgetItem(m_preview, { change.name, what });
     }
-    for (const QString& name : m_plan.removed)
+    int removed = 0;
+    for (const QString& name : m_plan.removed) {
+        if (farSideOf(name, m_plan.removed)) continue;
+        ++removed;
         new QTreeWidgetItem(m_preview, { name, tr("taken out: this layout has no use for it") });
+    }
     for (const QString& name : m_plan.unassigned)
-        new QTreeWidgetItem(m_preview, { name, tr("kept, no longer solved") });
+        if (!farSideOf(name, m_plan.unassigned))
+            new QTreeWidgetItem(m_preview, { name, tr("kept, no longer solved") });
 
     m_summary->setText(tr("%1 point(s) placed, %2 taken out. Each point's settings are written "
                           "too, so the corner is solved the way it is laid out.")
-                           .arg(m_plan.points.changes.size())
-                           .arg(m_plan.removed.size()));
+                           .arg(listed)
+                           .arg(removed));
     m_notes->setText(m_plan.points.warnings.join(QLatin1Char('\n')));
 }
 

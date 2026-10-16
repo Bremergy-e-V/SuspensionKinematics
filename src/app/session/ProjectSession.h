@@ -88,7 +88,7 @@ public:
     void resolveFromTable();
     /// Tell the table which points are one rocker each, so moving one moves
     /// the rest. Part of resolveFromTable(); on its own after the rockers change.
-    void applyRockerGroups();
+    void applyRigidGroups();
     /// Bind the mechanism again, then run the sweep and the pose. What a moved
     /// coordinate or a changed static angle needs.
     void resolveMechanism();

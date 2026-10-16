@@ -54,10 +54,22 @@ bool placeInboard(const PushrodDesign& design, const Vec3& ballJoint, double sid
     return true;
 }
 
+/// The outboard end where the custom offset puts it: @p side turns "inboard"
+/// into the sign of y.
+void placeOutboardAtShift(const PushrodDesign& design, double side, PushrodPoints* out)
+{
+    const Vec3& shift = design.outboardShift;
+    out->outboard = out->ballJoint + Vec3(shift.x, -side * shift.y, shift.z);
+}
+
 /// The outboard end: on the line from the ball joint to the chassis end, the
 /// offset inboard of the ball joint across the car.
 bool placeOutboard(const PushrodDesign& design, double side, PushrodPoints* out)
 {
+    if (design.customOutboard) {
+        placeOutboardAtShift(design, side, out);
+        return true;
+    }
     const double span = side * (out->ballJoint.y - out->inboard.y);
     if (span <= 1e-6) {
         out->error = tr("The inboard end is not inboard of the ball joint.");
@@ -258,6 +270,23 @@ PushrodPoints layOutPushrod(const PushrodDesign& design, const Vec3& ballJoint,
     return out;
 }
 
+std::vector<QStringList> pushrodGroups(const std::vector<PushrodDesign>& designs,
+                                       const LinkageTemplate& templ, const MirrorSpec& mirror,
+                                       const HardpointTable& table)
+{
+    std::vector<QStringList> groups;
+    for (const PushrodDesign& design : designs) {
+        if (design.layout != PushrodLayout::InlineDamper) continue;
+        for (const bool mirrored : { false, true }) {
+            const MechanismTemplate names =
+                instantiateMechanism(templ.mechanism, design.corner, mirrored, mirror, table);
+            const QStringList group = { names.pushrodInner, names.damperOutboard };
+            if (table.indexOf(group[0]) >= 0 && table.indexOf(group[1]) >= 0) groups.push_back(group);
+        }
+    }
+    return groups;
+}
+
 PushrodPlan planPushrods(const std::vector<PushrodDesign>& designs, const LinkageTemplate& templ,
                          const MirrorSpec& mirror, const HardpointTable& current,
                          const HardpointTable& baseline, const MeshQuery* chassis)
@@ -326,6 +355,10 @@ QJsonArray pushrodDesignsToJson(const std::vector<PushrodDesign>& designs)
         object.insert(QStringLiteral("clearance"), design.clearance);
         object.insert(QStringLiteral("inboardY"), design.inboardY);
         object.insert(QStringLiteral("outboardOffset"), design.outboardOffset);
+        object.insert(QStringLiteral("customOutboard"), design.customOutboard);
+        object.insert(QStringLiteral("outboardShift"),
+                      QJsonArray{ design.outboardShift.x, design.outboardShift.y,
+                                  design.outboardShift.z });
         object.insert(QStringLiteral("damperLength"), design.damperLength);
         array.append(object);
     }
@@ -352,6 +385,10 @@ std::vector<PushrodDesign> pushrodDesignsFromJson(const QJsonArray& array)
             object.value(QStringLiteral("outboardOffset")).toDouble(defaults.outboardOffset);
         design.damperLength =
             object.value(QStringLiteral("damperLength")).toDouble(defaults.damperLength);
+        design.customOutboard = object.value(QStringLiteral("customOutboard")).toBool(false);
+        const QJsonArray shift = object.value(QStringLiteral("outboardShift")).toArray();
+        if (shift.size() == 3)
+            design.outboardShift = Vec3(shift[0].toDouble(), shift[1].toDouble(), shift[2].toDouble());
         if (!design.corner.isEmpty()) designs.push_back(design);
     }
     return designs;

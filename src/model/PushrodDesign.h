@@ -39,7 +39,9 @@ enum class PickupArm { Upper, Lower };
 ///   stood off it by a clearance; with a rocker it is the rocker's pushrod arm,
 ///   placed by Linkage > Rocker;
 /// - the **outboard** end on the line from the chosen ball joint to the inboard
-///   end, a given distance inboard of the ball joint in y.
+///   end, a given distance inboard of the ball joint in y -- or, when it is not
+///   to point at the ball joint, anywhere: an offset from the ball joint in x,
+///   y (inboard) and z.
 ///
 /// In line, the damper's outer eye is on the same line, a damper's length from
 /// the chassis end.
@@ -53,6 +55,12 @@ struct PushrodDesign {
     /// find, as a distance from the centreline (the far side mirrored).
     double inboardY = 150.0;
     double outboardOffset = 40.0; ///< inboard of the ball joint in y, mm
+    /// Put the outboard end at outboardShift from the ball joint instead of on
+    /// the line to the inboard end.
+    bool customOutboard = false;
+    /// From the ball joint, mm: x forward, y *inboard*, z up -- inboard rather
+    /// than left, so one set of numbers means the same on either side.
+    Vec3 outboardShift;
     double damperLength = 200.0;  ///< eye to eye, for a damper in line, mm
 
     bool operator==(const PushrodDesign& other) const = default;
@@ -87,6 +95,14 @@ struct PushrodPlan {
 
     bool ok() const { return points.ok(); }
 };
+
+/// The points of each corner's strut in line that are one place and move as
+/// one -- the pushrod's inner end and the damper's eye -- by name, one group
+/// per corner and side. Dragging one apart from the other would leave the
+/// pushrod free to spin about its own line, and the corner unsolved.
+std::vector<QStringList> pushrodGroups(const std::vector<PushrodDesign>& designs,
+                                       const LinkageTemplate& templ, const MirrorSpec& mirror,
+                                       const HardpointTable& table);
 
 PushrodPlan planPushrods(const std::vector<PushrodDesign>& designs, const LinkageTemplate& templ,
                          const MirrorSpec& mirror, const HardpointTable& current,
