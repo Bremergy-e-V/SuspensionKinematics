@@ -28,6 +28,17 @@ SweepKind sweepKindFromString(const QString& text, SweepKind fallback = SweepKin
 QString sweepInputUnit(SweepKind kind);
 QString sweepInputLabel(SweepKind kind);
 
+/// What a corner is made of, when the project says: the template, for which
+/// points belong to which corner and which parts give, and the configuration,
+/// for what joins what at every point. Without it a corner is solved from the
+/// mechanism block's roles alone.
+struct LinkageDescription {
+    const LinkageTemplate* templ = nullptr;
+    const HardpointConfigMap* config = nullptr;
+
+    bool isEmpty() const { return !templ || !config || config->isEmpty(); }
+};
+
 /// One axle: the corner as the template names it, and its mirror.
 ///
 /// Roll centre is the reason this exists rather than a bare pair of corners --
@@ -49,10 +60,16 @@ public:
     /// @p alignment is the axle's static camber and toe when the project states
     /// them, handed to both sides alike: the far side's axis comes out as the
     /// mirror image of the near side's. Nothing means "read them off the table".
+    ///
+    /// @p description, when it has a configuration, is what each side is solved
+    /// from. A side whose configuration does not describe a corner that moves
+    /// as one -- a joint left out, a body nothing holds -- is solved from the
+    /// roles instead, and a warning says what is missing.
     static AxleSolver build(const MechanismTemplate& mechanism, const CornerSpec& corner,
                             const HardpointTable& table, const MirrorSpec& mirror,
                             bool steeringDeclared = false,
-                            const std::optional<StaticAlignment>& alignment = std::nullopt);
+                            const std::optional<StaticAlignment>& alignment = std::nullopt,
+                            const LinkageDescription& description = {});
 
     bool isEmpty() const { return !m_left && !m_right; }
     bool hasBothSides() const { return m_left.has_value() && m_right.has_value(); }

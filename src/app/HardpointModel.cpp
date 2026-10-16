@@ -166,7 +166,8 @@ void HardpointModel::setSolvedPoints(std::optional<QSet<QString>> names)
 bool HardpointModel::isUnsolved(int row) const
 {
     if (!m_solved || row < 0 || row >= rowCount()) return false;
-    return configAt(row).type == PointType::Solved
+    const PointType type = configAt(row).type;
+    return (type == PointType::Solved || type == PointType::Welded)
            && !m_solved->contains(m_table.points[static_cast<std::size_t>(row)].name);
 }
 
@@ -216,7 +217,7 @@ int HardpointModel::columnCount(const QModelIndex& parent) const
 QVariant HardpointModel::configDisplay(int row, const HardpointConfig& config, int column) const
 {
     switch (column) {
-    case TypeColumn: return config.type == PointType::Solved && isUnsolved(row)
+    case TypeColumn: return isUnsolved(row)
                                 ? tr("Not solved")
                                 : pointTypeLabel(config.type);
     case Part1Column: return config.part1.isEmpty() ? QString(kEmDash) : config.part1;

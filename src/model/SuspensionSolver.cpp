@@ -102,7 +102,8 @@ const Vec3* CornerPose::find(const QString& name) const
 
 std::optional<CornerSolver> CornerSolver::bind(const MechanismTemplate& mechanism,
                                                const HardpointTable& table, QString* error,
-                                               const std::optional<StaticAlignment>& alignment)
+                                               const std::optional<StaticAlignment>& alignment,
+                                               const MechanismGraph* graph)
 {
     const MechanismCoverage coverage = coverMechanism(mechanism, table);
     if (coverage.absent) {
@@ -202,20 +203,10 @@ std::optional<CornerSolver> CornerSolver::bind(const MechanismTemplate& mechanis
         return std::nullopt;
     }
 
-    solver.m_uprightLowerUpper = distance(solver.m_lowerOuter, solver.m_upperOuter);
-    solver.m_uprightLowerTie = distance(solver.m_lowerOuter, solver.m_tieRodOutboard);
-    solver.m_uprightUpperTie = distance(solver.m_upperOuter, solver.m_tieRodOutboard);
-    solver.m_tieRodLength = distance(solver.m_tieRodInboard, solver.m_tieRodOutboard);
-
     if (solver.m_hasRocker) {
         solver.m_rockerAxis = axisThrough(solver.m_rockerPivot, solver.m_rockerAxisPoint);
         solver.m_pushrodInnerCircle = circleAbout(solver.m_pushrodInner, solver.m_rockerAxis);
-        solver.m_pushrodLength = distance(solver.m_pushrodOuter, solver.m_pushrodInner);
         if (!solver.m_pushrodInnerCircle.isValid()) solver.m_hasRocker = false;
-    }
-    if (!solver.m_hasRocker) {
-        solver.m_hasDamper = false;
-        if (mechanism.antiRollMount == DropLinkMount::Rocker) solver.m_hasAntiRoll = false;
     }
 
     if (solver.m_hasAntiRoll) {
@@ -232,8 +223,6 @@ std::optional<CornerSolver> CornerSolver::bind(const MechanismTemplate& mechanis
         solver.m_antiRollAxis =
             axisThrough(solver.m_antiRollArmRoot, solver.m_antiRollArmRoot + direction);
         solver.m_antiRollCircle = circleAbout(solver.m_antiRollArmEnd, solver.m_antiRollAxis);
-        solver.m_dropLinkLength =
-            distance(solver.m_antiRollDropLinkOuter, solver.m_antiRollArmEnd);
         if (!solver.m_antiRollCircle.isValid()) solver.m_hasAntiRoll = false;
     }
 
@@ -301,6 +290,10 @@ std::optional<CornerSolver> CornerSolver::bind(const MechanismTemplate& mechanis
     else if (!solver.m_hasContactPatch)
         solver.m_contactPatch = solver.m_wheelCenter - Vec3(0, 0, 1);
 
+    if (!solver.bindGraph(graph ? *graph : roleGraph(mechanism, table), alignment.has_value(),
+                          error))
+        return std::nullopt;
+
     CornerPose design;
     if (!solver.solveAt(0.0, 0.0, nullptr, &design)) {
         if (error)
@@ -318,17 +311,113 @@ std::optional<CornerSolver> CornerSolver::bind(const MechanismTemplate& mechanis
     return solver;
 }
 
+namespace {
+
+/// The one of @p point's two bodies that @p other also names, or -1.
+int sharedBody(const GraphPoint& point, const GraphPoint& other)
+{
+    for (const int body : { point.body1, point.body2 })
+        if (body > MechanismGraph::kGround && (body == other.body1 || body == other.body2))
+            return body;
+    return MechanismGraph::kNoBody;
+}
+
+/// The moving body @p point is carried by: its first, unless that is the chassis.
+int carryingBody(const GraphPoint& point)
+{
+    return point.body1 > MechanismGraph::kGround ? point.body1 : point.body2;
+}
+
+/// How far out along the bar's axis its made-up second point is put. Any
+/// distance does; one of the size of the bar keeps the solve's numbers even.
+constexpr double kBarAxisReach = 100.0;
+
+} // namespace
+
+int CornerSolver::pointIndex(const QString& name) const
+{
+    return name.isEmpty() ? -1 : m_graphSource.indexOfPoint(name);
+}
+
+bool CornerSolver::bindGraph(MechanismGraph graph, bool stated, QString* error)
+{
+    m_graphSource = std::move(graph);
+
+    // With the angles stated the axis point is carried on the axis they give,
+    // which is where bind() has already put it.
+    const int axisPoint = pointIndex(m_mechanism.wheelAxis);
+    if (stated && m_hasWheelAxis && axisPoint >= 0)
+        m_graphSource.points[std::size_t(axisPoint)].design = m_wheelAxisPoint;
+
+    // The lower wishbone is the body its ball joint shares with its pivots.
+    const int outer = pointIndex(m_mechanism.lowerOuter);
+    const int front = pointIndex(m_mechanism.lowerFront);
+    const int center = pointIndex(m_mechanism.wheelCenter);
+    if (outer < 0 || front < 0 || center < 0) {
+        if (error)
+            *error = tr("The configuration says nothing about the lower wishbone or the wheel "
+                        "centre, so there is nothing to drive the corner by or to read it off.");
+        return false;
+    }
+    m_drivenBody = sharedBody(m_graphSource.points[std::size_t(outer)],
+                              m_graphSource.points[std::size_t(front)]);
+    m_uprightBody = carryingBody(m_graphSource.points[std::size_t(center)]);
+    m_rackPoint = m_steered ? pointIndex(m_mechanism.tieRodInboard) : -1;
+
+    // A bar with no bearing in the table turns about an axis the axle decides;
+    // the linkage is given a second point on it to turn about.
+    const int root = pointIndex(m_mechanism.antiRollArmRoot);
+    if (m_hasAntiRoll && !m_antiRollAxisFromBearing && root >= 0) {
+        GraphPoint axisEnd = m_graphSource.points[std::size_t(root)];
+        axisEnd.name.clear();
+        axisEnd.design = m_antiRollArmRoot + m_antiRollAxis.direction * kBarAxisReach;
+        m_graphSource.points.push_back(axisEnd);
+        m_barAxisPoint = int(m_graphSource.points.size()) - 1;
+    }
+
+    m_graph = GraphSolver::compile(m_graphSource, m_drivenBody, error);
+    if (!m_graph) return false;
+
+    const auto moving = [this](const QString& name) {
+        const int index = pointIndex(name);
+        return index >= 0 && m_graph->moves(index, m_rackPoint);
+    };
+    const int damperInboard = pointIndex(m_mechanism.damperInboard);
+    m_hasRocker = m_hasRocker && moving(m_mechanism.pushrodInner);
+    m_hasDamper = damperInboard >= 0 && moving(m_mechanism.damperOutboard);
+    if (m_hasDamper) {
+        m_damperInboard = m_graphSource.points[std::size_t(damperInboard)].design;
+        m_damperOutboard =
+            m_graphSource.points[std::size_t(pointIndex(m_mechanism.damperOutboard))].design;
+    }
+    m_hasAntiRoll = m_hasAntiRoll && moving(m_mechanism.antiRollArmEnd);
+    return true;
+}
+
+bool CornerSolver::placeBarAxis(const Vec3& direction)
+{
+    if (m_barAxisPoint < 0) return false;
+    MechanismGraph moved = m_graphSource;
+    moved.points[std::size_t(m_barAxisPoint)].design =
+        m_antiRollArmRoot + direction.normalized() * kBarAxisReach;
+    std::optional<GraphSolver> compiled = GraphSolver::compile(moved, m_drivenBody, nullptr);
+    if (!compiled) return false;
+    m_graphSource = std::move(moved);
+    m_graph = std::move(compiled);
+    return true;
+}
+
 void CornerSolver::setAntiRollAxis(const Vec3& direction)
 {
     if (!m_hasAntiRoll || m_antiRollAxisFromBearing) return;
     const Axis axis = axisThrough(m_antiRollArmRoot, m_antiRollArmRoot + direction);
     if (!axis.isValid()) return;
     const Circle circle = circleAbout(m_antiRollArmEnd, axis);
-    if (!circle.isValid()) return;
+    if (!circle.isValid() || !placeBarAxis(direction)) return;
     m_antiRollAxis = axis;
     m_antiRollCircle = circle;
     // The design pose's bar angle is zero either way, so nothing else has to be
-    // rebuilt: the axis only ever enters through this circle.
+    // rebuilt: at design every body is where the table put it.
 }
 
 bool CornerSolver::solveAt(double angle, double rackTravel, const CornerPose* previous,
@@ -340,49 +429,18 @@ bool CornerSolver::solveAt(double angle, double rackTravel, const CornerPose* pr
     // The pose reports what actually happened, not what was asked for.
     const double rack = m_steered ? rackTravel : 0.0;
     pose.rackTravel = rack;
+    const Vec3 rackOffset(0.0, rack, 0.0);
 
-    Vec3 candidates[2];
-    bool ok = false;
-
-    // 1. The lower ball joint simply turns with its wishbone. This is the one
-    //    free variable; everything below follows from it.
-    pose.lowerOuter = rotateAbout(m_lowerOuter, m_lowerAxis, angle);
-
-    // 2. The upper ball joint is on its own circle and a fixed distance from the
-    //    lower one, because the upright between them is rigid.
-    int count = intersectCircleSphere(m_upperCircle, pose.lowerOuter, m_uprightLowerUpper,
-                                      candidates);
-    if (count == 0) {
-        pose.error = tr("The upper wishbone cannot reach the upright here.");
+    // The lower wishbone turns about its pivots by the one free variable; the
+    // linkage does the rest.
+    GraphState state;
+    if (!m_graph->solve(rotationAbout(m_lowerAxis, angle), m_rackPoint, rackOffset,
+                        previous ? &previous->graphState : nullptr, &state, &pose.error)) {
         *out = pose;
         return false;
     }
-    pose.upperOuter = nearestTo(previous ? previous->upperOuter : m_upperOuter, candidates, count,
-                                &ok);
 
-    // 3. The outer tie rod end: rigid with the two ball joints, and a tie rod's
-    //    length from the rack.
-    pose.tieRodInboard = m_tieRodInboard + Vec3(0.0, rack, 0.0);
-    count = trilaterate(pose.lowerOuter, m_uprightLowerTie, pose.upperOuter, m_uprightUpperTie,
-                        pose.tieRodInboard, m_tieRodLength, candidates);
-    if (count == 0) {
-        pose.error = tr("The tie rod cannot reach the upright here.");
-        *out = pose;
-        return false;
-    }
-    pose.tieRodOutboard = nearestTo(previous ? previous->tieRodOutboard : m_tieRodOutboard,
-                                    candidates, count, &ok);
-
-    // 4. Three joints of one rigid body place the whole of it, wheel included.
-    const Vec3 from[3] = { m_lowerOuter, m_upperOuter, m_tieRodOutboard };
-    const Vec3 to[3] = { pose.lowerOuter, pose.upperOuter, pose.tieRodOutboard };
-    const Rigid upright = rigidFromTriangle(from, to, &ok);
-    if (!ok) {
-        pose.error = tr("The upright's three joints are in a straight line, so its orientation "
-                        "is not determined.");
-        *out = pose;
-        return false;
-    }
+    const Rigid upright = m_graph->motionOf(m_uprightBody, state);
     pose.wheelCenter = upright.map(m_wheelCenter);
     pose.spinAxis = upright.rotate(m_designSpinAxis).normalized();
     pose.uprightMotion = upright;
@@ -397,65 +455,8 @@ bool CornerSolver::solveAt(double angle, double rackTravel, const CornerPose* pr
                             ? contactPatchFor(pose.wheelCenter, pose.spinAxis, m_tireRadius)
                             : upright.map(m_contactPatch);
 
-    // 5. How far the upper wishbone turned, which is what carries the pushrod.
-    pose.upperArmAngle = m_upperCircle.angleOf(pose.upperOuter);
-
-    if (m_hasRocker) {
-        switch (m_mechanism.pushrodMount) {
-        case PushrodMount::UpperArm:
-            pose.pushrodOuter = rotateAbout(m_pushrodOuter, m_upperAxis, pose.upperArmAngle);
-            break;
-        case PushrodMount::LowerArm:
-            pose.pushrodOuter = rotateAbout(m_pushrodOuter, m_lowerAxis, angle);
-            break;
-        case PushrodMount::Upright:
-            pose.pushrodOuter = upright.map(m_pushrodOuter);
-            break;
-        }
-
-        // 6. The rocker turns until its pushrod pickup is a pushrod away.
-        count = intersectCircleSphere(m_pushrodInnerCircle, pose.pushrodOuter, m_pushrodLength,
-                                      candidates);
-        if (count == 0) {
-            pose.error = tr("The pushrod cannot reach the rocker here.");
-            *out = pose;
-            return false;
-        }
-        pose.pushrodInner = nearestTo(previous ? previous->pushrodInner : m_pushrodInner,
-                                      candidates, count, &ok);
-        pose.rockerAngle = m_pushrodInnerCircle.angleOf(pose.pushrodInner);
-
-        if (m_hasDamper)
-            pose.damperOutboard = rotateAbout(m_damperOutboard, m_rockerAxis, pose.rockerAngle);
-    }
-
-    // 7. The bar's arm turns until it is a drop link away from wherever the
-    //    drop link's upper end has been carried.
-    if (m_hasAntiRoll && !solveAntiRoll(upright, previous, &pose)) {
-        *out = pose;
-        return false;
-    }
-
-    const auto add = [&pose](const QString& name, const Vec3& position) {
-        if (!name.isEmpty()) pose.points.push_back(PosedPoint{ name, position });
-    };
-    add(m_mechanism.lowerOuter, pose.lowerOuter);
-    add(m_mechanism.upperOuter, pose.upperOuter);
-    add(m_mechanism.tieRodInboard, pose.tieRodInboard);
-    add(m_mechanism.tieRodOutboard, pose.tieRodOutboard);
-    add(m_mechanism.wheelCenter, pose.wheelCenter);
-    if (m_hasWheelAxis) add(m_mechanism.wheelAxis, upright.map(m_wheelAxisPoint));
-    if (m_hasContactPatch) add(m_mechanism.contactPatch, pose.contactPatch);
-    for (const PosedPoint& carried : m_carried) add(carried.name, upright.map(carried.position));
-    if (m_hasRocker) {
-        add(m_mechanism.pushrodOuter, pose.pushrodOuter);
-        add(m_mechanism.pushrodInner, pose.pushrodInner);
-    }
-    if (m_hasDamper) add(m_mechanism.damperOutboard, pose.damperOutboard);
-    if (m_hasAntiRoll) {
-        add(m_mechanism.antiRollDropLinkOuter, pose.antiRollDropLinkOuter);
-        add(m_mechanism.antiRollArmEnd, pose.antiRollArmEnd);
-    }
+    readJoints(state, rackOffset, &pose);
+    pose.graphState = std::move(state);
 
     pose.hasDamper = m_hasDamper;
     pose.hasAntiRoll = m_hasAntiRoll;
@@ -465,37 +466,45 @@ bool CornerSolver::solveAt(double angle, double rackTravel, const CornerPose* pr
     return true;
 }
 
-Vec3 CornerSolver::dropLinkOuterAt(const CornerPose& pose, const Rigid& upright) const
+void CornerSolver::readJoints(const GraphState& state, const Vec3& rackOffset,
+                              CornerPose* pose) const
 {
-    switch (m_mechanism.antiRollMount) {
-    case DropLinkMount::Rocker:
-        return rotateAbout(m_antiRollDropLinkOuter, m_rockerAxis, pose.rockerAngle);
-    case DropLinkMount::UpperArm:
-        return rotateAbout(m_antiRollDropLinkOuter, m_upperAxis, pose.upperArmAngle);
-    case DropLinkMount::LowerArm:
-        return rotateAbout(m_antiRollDropLinkOuter, m_lowerAxis, pose.armAngle);
-    case DropLinkMount::Upright: return upright.map(m_antiRollDropLinkOuter);
+    const auto at = [&](const QString& name) {
+        const int index = pointIndex(name);
+        return index < 0 ? Vec3() : m_graph->positionOf(index, state, m_rackPoint, rackOffset);
+    };
+    pose->lowerOuter = at(m_mechanism.lowerOuter);
+    pose->upperOuter = at(m_mechanism.upperOuter);
+    pose->tieRodInboard = at(m_mechanism.tieRodInboard);
+    pose->tieRodOutboard = at(m_mechanism.tieRodOutboard);
+    pose->upperArmAngle = m_upperCircle.angleOf(pose->upperOuter);
+    if (m_hasRocker) {
+        pose->pushrodOuter = at(m_mechanism.pushrodOuter);
+        pose->pushrodInner = at(m_mechanism.pushrodInner);
+        pose->rockerAngle = m_pushrodInnerCircle.angleOf(pose->pushrodInner);
     }
-    return m_antiRollDropLinkOuter;
-}
-
-bool CornerSolver::solveAntiRoll(const Rigid& upright, const CornerPose* previous,
-                                 CornerPose* pose) const
-{
-    pose->antiRollDropLinkOuter = dropLinkOuterAt(*pose, upright);
-
-    Vec3 candidates[2];
-    const int count = intersectCircleSphere(m_antiRollCircle, pose->antiRollDropLinkOuter,
-                                            m_dropLinkLength, candidates);
-    if (count == 0) {
-        pose->error = tr("The anti-roll drop link cannot reach the bar here.");
-        return false;
+    if (m_hasDamper) pose->damperOutboard = at(m_mechanism.damperOutboard);
+    if (m_hasAntiRoll) {
+        pose->antiRollDropLinkOuter = at(m_mechanism.antiRollDropLinkOuter);
+        pose->antiRollArmEnd = at(m_mechanism.antiRollArmEnd);
+        pose->antiRollArmAngle = m_antiRollCircle.angleOf(pose->antiRollArmEnd);
     }
-    bool ok = false;
-    pose->antiRollArmEnd = nearestTo(previous ? previous->antiRollArmEnd : m_antiRollArmEnd,
-                                     candidates, count, &ok);
-    pose->antiRollArmAngle = m_antiRollCircle.angleOf(pose->antiRollArmEnd);
-    return true;
+
+    // Every point the linkage moved, for laying over the table. A contact
+    // patch is the computed one, not the one the upright would carry.
+    const MechanismGraph& graph = m_graph->graph();
+    for (std::size_t i = 0; i < graph.points.size(); ++i) {
+        const GraphPoint& point = graph.points[i];
+        // The inboard tie rod end is reported steered or not, as it always was.
+        const bool reported = m_graph->moves(int(i), m_rackPoint)
+                              || point.name == m_mechanism.tieRodInboard;
+        if (point.name.isEmpty() || !reported) continue;
+        const bool patch = point.type == PointType::ContactPatch
+                           || point.name == m_mechanism.contactPatch;
+        pose->points.push_back(PosedPoint{
+            point.name, patch ? pose->contactPatch
+                              : m_graph->positionOf(int(i), state, m_rackPoint, rackOffset) });
+    }
 }
 
 void CornerSolver::measure(CornerPose* pose) const

@@ -134,6 +134,10 @@ add_library(suspkin_core STATIC
     src/model/GeomSolve.cpp
     src/model/Mechanism.h
     src/model/Mechanism.cpp
+    src/model/MechanismGraph.h
+    src/model/MechanismGraph.cpp
+    src/model/GraphSolver.h
+    src/model/GraphSolver.cpp
     src/model/SuspensionSolver.h
     src/model/SuspensionSolver.cpp
     src/model/Sweep.h
@@ -151,6 +155,8 @@ add_library(suspkin_core STATIC
     src/model/ChassisOffset.cpp
     src/model/RockerDesign.h
     src/model/RockerDesign.cpp
+    src/model/PushrodDesign.h
+    src/model/PushrodDesign.cpp
     src/io/LinkageTemplate.h
     src/io/LinkageTemplate.cpp
     src/io/XlsxHardpoints.h
@@ -278,6 +284,8 @@ qt_add_executable(suspkin
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
     src/app/features/RockerFeature.cpp
+    src/app/features/TemplateEditorFeature.cpp
+    src/app/features/PushrodFeature.cpp
     src/app/features/AnalysisFeature.cpp
     src/app/features/ViewFeature.cpp
     src/app/features/PanelsFeature.cpp
@@ -315,10 +323,26 @@ qt_add_executable(suspkin
     src/app/RockerDialog.cpp
     src/app/RockerSketch.h
     src/app/RockerSketch.cpp
+    src/app/PushrodDialog.h
+    src/app/PushrodDialog.cpp
     src/app/ChassisDistanceEntry.h
     src/app/ChassisDistanceEntry.cpp
     src/app/PartDialogs.h
     src/app/PartDialogs.cpp
+    # Linkage > Template Editor: parts, points, settings and graphics over a
+    # draft of the project's template, points and settings.
+    src/app/TemplateDraft.h
+    src/app/TemplateDraft.cpp
+    src/app/TemplateEditorDialog.h
+    src/app/TemplateEditorDialog.cpp
+    src/app/TemplatePartsTab.h
+    src/app/TemplatePartsTab.cpp
+    src/app/TemplatePointsTab.h
+    src/app/TemplatePointsTab.cpp
+    src/app/TemplateSettingsTab.h
+    src/app/TemplateSettingsTab.cpp
+    src/app/TemplateGraphicsTab.h
+    src/app/TemplateGraphicsTab.cpp
     src/app/SteeringDialog.h
     src/app/SteeringDialog.cpp
     src/app/StaticAnglesDialog.h

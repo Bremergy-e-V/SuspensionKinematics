@@ -40,6 +40,7 @@ std::optional<ChainTemplate> chainFromJson(const QJsonObject& object)
     chain.points = stringList(object.value(QStringLiteral("points")));
     chain.closed = object.value(QStringLiteral("closed")).toBool(false);
     chain.optional = object.value(QStringLiteral("optional")).toBool(false);
+    chain.style = chainStyleFromString(object.value(QStringLiteral("style")).toString());
     if (chain.points.size() < 2) return std::nullopt;
     return chain;
 }
@@ -52,7 +53,16 @@ QJsonObject chainToJson(const ChainTemplate& chain)
     object.insert(QStringLiteral("points"), points);
     if (chain.closed) object.insert(QStringLiteral("closed"), true);
     if (chain.optional) object.insert(QStringLiteral("optional"), true);
+    if (chain.style != ChainStyle::Line)
+        object.insert(QStringLiteral("style"), chainStyleToString(chain.style));
     return object;
+}
+
+/// Said only when it is not what the part's kind implies, so a template that
+/// never mentions it reads back exactly as it was written.
+bool statesCompliance(const PartTemplate& part)
+{
+    return part.compliance != defaultCompliance(part.kind);
 }
 
 QJsonObject partToJson(const PartTemplate& part)
@@ -61,6 +71,8 @@ QJsonObject partToJson(const PartTemplate& part)
     object.insert(QStringLiteral("id"), part.id);
     object.insert(QStringLiteral("label"), part.label);
     object.insert(QStringLiteral("kind"), partKindToString(part.kind));
+    if (statesCompliance(part))
+        object.insert(QStringLiteral("compliance"), partComplianceToString(part.compliance));
     if (part.optional) object.insert(QStringLiteral("optional"), true);
     if (!part.perCorner) object.insert(QStringLiteral("perCorner"), false);
 
@@ -308,6 +320,8 @@ LinkageTemplateLoadResult readTemplate(const QByteArray& bytes, const QString& l
         part.id = object.value(QStringLiteral("id")).toString();
         part.label = object.value(QStringLiteral("label")).toString(part.id);
         part.kind = partKindFromString(object.value(QStringLiteral("kind")).toString());
+        part.compliance = partComplianceFromString(
+            object.value(QStringLiteral("compliance")).toString(), defaultCompliance(part.kind));
         part.optional = object.value(QStringLiteral("optional")).toBool(false);
         // Absent is a template's own part, written once for every corner --
         // which is every part any template had before this existed.
@@ -330,11 +344,8 @@ LinkageTemplateLoadResult readTemplate(const QByteArray& bytes, const QString& l
             result.warnings.append(tr("A part without an \"id\" was skipped."));
             continue;
         }
-        if (part.chains.empty()) {
-            result.warnings.append(
-                tr("Part \"%1\" names no points to connect; it was skipped.").arg(part.id));
-            continue;
-        }
+        // A part with nothing to draw is still a body: points can be joined to
+        // it in the hardpoint settings before anybody connects a line to it.
         templ.parts.push_back(std::move(part));
     }
 
@@ -807,7 +818,14 @@ QByteArray partText(const PartTemplate& part, const QByteArray& indent)
     lines << inner + QByteArrayLiteral("\"id\": ") + encodeString(part.id);
     lines << inner + QByteArrayLiteral("\"label\": ") + encodeString(part.label);
     lines << inner + QByteArrayLiteral("\"kind\": ") + encodeString(partKindToString(part.kind));
-    if (part.optional) lines << inner + QByteArrayLiteral("\"optional\": true");
+    if (statesCompliance(part))
+        lines << inner + QByteArrayLiteral("\"compliance\": ")
+                     + encodeString(partComplianceToString(part.compliance));
+    // In the shorthand one "optional" says it for the part and its one chain
+    // alike, which is how partToJson() writes it too.
+    const bool shorthand = part.chains.size() == 1;
+    const bool optional = part.optional || (shorthand && part.chains.front().optional);
+    if (optional) lines << inner + QByteArrayLiteral("\"optional\": true");
     if (!part.perCorner) lines << inner + QByteArrayLiteral("\"perCorner\": false");
 
     const auto pointList = [](const ChainTemplate& chain) {
@@ -815,16 +833,21 @@ QByteArray partText(const PartTemplate& part, const QByteArray& indent)
         for (const QString& name : chain.points) names << encodeString(name);
         return QByteArrayLiteral("[") + names.join(", ") + QByteArrayLiteral("]");
     };
-    if (part.chains.size() == 1) {
+    const auto styleEntry = [](const ChainTemplate& chain) {
+        return QByteArrayLiteral("\"style\": ") + encodeString(chainStyleToString(chain.style));
+    };
+    if (shorthand) {
         const ChainTemplate& chain = part.chains.front();
         lines << inner + QByteArrayLiteral("\"points\": ") + pointList(chain);
         if (chain.closed) lines << inner + QByteArrayLiteral("\"closed\": true");
+        if (chain.style != ChainStyle::Line) lines << inner + styleEntry(chain);
     } else {
         QList<QByteArray> chains;
         for (const ChainTemplate& chain : part.chains) {
             QByteArray entry = QByteArrayLiteral("{ \"points\": ") + pointList(chain);
             if (chain.closed) entry += QByteArrayLiteral(", \"closed\": true");
             if (chain.optional) entry += QByteArrayLiteral(", \"optional\": true");
+            if (chain.style != ChainStyle::Line) entry += QByteArrayLiteral(", ") + styleEntry(chain);
             chains << inner + QByteArrayLiteral("    ") + entry + QByteArrayLiteral(" }");
         }
         lines << inner + QByteArrayLiteral("\"chains\": [\n") + chains.join(",\n") + '\n' + inner
@@ -1016,6 +1039,140 @@ QByteArray setTemplatePartLabel(const QByteArray& bytes, const QString& id, cons
             spliced = bytes;
             spliced.insert(idMember->valueEnd,
                            separator + QByteArrayLiteral("\"label\": ") + encodeString(label));
+        }
+    }
+    return splicedOrRewritten(spliced, expected);
+}
+
+QByteArray setTemplatePart(const QByteArray& bytes, const PartTemplate& part, QString* error)
+{
+    std::optional<QJsonDocument> document = parseTemplateBytes(bytes, error);
+    if (!document) return {};
+
+    QJsonObject root = document->object();
+    QJsonArray parts = root.value(QStringLiteral("parts")).toArray();
+    const int index = partIndex(parts, part.id);
+    if (index < 0) {
+        if (error) *error = tr("The template has no part called \"%1\".").arg(part.id);
+        return {};
+    }
+    parts.replace(index, partToJson(part));
+    root.insert(QStringLiteral("parts"), parts);
+    const QJsonDocument expected(root);
+
+    QByteArray spliced;
+    const std::optional<PartsLayout> layout = findParts(bytes);
+    const int at = layout ? int(layout->ids.indexOf(part.id)) : -1;
+    if (at >= 0) {
+        const auto [from, to] = layout->spans[std::size_t(at)];
+        spliced = bytes;
+        spliced.replace(from, to - from, partText(part, indentAt(bytes, from)));
+    }
+    return splicedOrRewritten(spliced, expected);
+}
+
+namespace {
+
+/// The order the shipped template writes the mechanism in: the wishbones, the
+/// steering, the upright, then the spring end of it, and what used to be called
+/// what last. Anything not in the list follows in the order JSON keeps it.
+const QStringList& mechanismGroupOrder()
+{
+    static const QStringList order = {
+        QStringLiteral("lowerWishbone"), QStringLiteral("upperWishbone"),
+        QStringLiteral("tieRod"),        QStringLiteral("upright"),
+        QStringLiteral("pushrod"),       QStringLiteral("rocker"),
+        QStringLiteral("damper"),        QStringLiteral("antiRollBar"),
+        QStringLiteral("formerNames"),
+    };
+    return order;
+}
+
+/// The keys inside each group, in the order a person reads a corner.
+const QStringList& mechanismRoleOrder()
+{
+    static const QStringList order = {
+        QStringLiteral("front"),         QStringLiteral("rear"),
+        QStringLiteral("outer"),         QStringLiteral("inboard"),
+        QStringLiteral("outboard"),      QStringLiteral("wheelCenter"),
+        QStringLiteral("wheelAxis"),     QStringLiteral("contactPatch"),
+        QStringLiteral("carries"),       QStringLiteral("mount"),
+        QStringLiteral("inner"),         QStringLiteral("pivot"),
+        QStringLiteral("axis"),          QStringLiteral("dropLinkOuter"),
+        QStringLiteral("armEnd"),        QStringLiteral("armRoot"),
+        QStringLiteral("bearing"),
+    };
+    return order;
+}
+
+/// @p object's keys, those in @p order first and in that order.
+QStringList orderedKeys(const QJsonObject& object, const QStringList& order)
+{
+    QStringList keys;
+    for (const QString& key : order)
+        if (object.contains(key)) keys << key;
+    for (const QString& key : object.keys())
+        if (!keys.contains(key)) keys << key;
+    return keys;
+}
+
+/// A value that is a string or a list of strings, written on one line.
+QByteArray scalarText(const QJsonValue& value)
+{
+    if (!value.isArray()) return encodeString(value.toString());
+    QList<QByteArray> entries;
+    for (const QJsonValue& entry : value.toArray()) entries << encodeString(entry.toString());
+    return QByteArrayLiteral("[") + entries.join(", ") + QByteArrayLiteral("]");
+}
+
+/// The mechanism block as text: one group to a line-broken object, its roles
+/// one to a line, lined up under @p indent.
+QByteArray mechanismText(const QJsonObject& mechanism, const QByteArray& indent)
+{
+    const QByteArray inner = indent + QByteArrayLiteral("    ");
+    const QByteArray innermost = inner + QByteArrayLiteral("    ");
+    QList<QByteArray> groups;
+    for (const QString& group : orderedKeys(mechanism, mechanismGroupOrder())) {
+        const QJsonObject roles = mechanism.value(group).toObject();
+        QList<QByteArray> lines;
+        for (const QString& key : orderedKeys(roles, mechanismRoleOrder()))
+            lines << innermost + encodeString(key) + QByteArrayLiteral(": ")
+                         + scalarText(roles.value(key));
+        groups << inner + encodeString(group) + QByteArrayLiteral(": {\n") + lines.join(",\n")
+                      + '\n' + inner + '}';
+    }
+    if (groups.isEmpty()) return QByteArrayLiteral("{}");
+    return QByteArrayLiteral("{\n") + groups.join(",\n") + '\n' + indent + '}';
+}
+
+} // namespace
+
+QByteArray setTemplateMechanism(const QByteArray& bytes, const MechanismTemplate& mechanism,
+                                QString* error)
+{
+    std::optional<QJsonDocument> document = parseTemplateBytes(bytes, error);
+    if (!document) return {};
+
+    const QJsonObject block = mechanismToJson(mechanism);
+    QJsonObject root = document->object();
+    root.insert(QStringLiteral("mechanism"), block);
+    const QJsonDocument expected(root);
+
+    QByteArray spliced;
+    const int rootStart = skipSpace(bytes, 0);
+    if (const std::optional<std::vector<Member>> members = objectMembers(bytes, rootStart)) {
+        if (const Member* existing = findMember(*members, QStringLiteral("mechanism"))) {
+            spliced = bytes;
+            spliced.replace(existing->valueStart, existing->valueEnd - existing->valueStart,
+                            mechanismText(block, indentAt(bytes, existing->keyStart)));
+        } else if (!members->empty()) {
+            // After the last member, lined up with it.
+            const Member& last = members->back();
+            const QByteArray indent = indentAt(bytes, last.keyStart);
+            spliced = bytes;
+            spliced.insert(last.valueEnd, QByteArrayLiteral(",\n") + indent
+                                              + QByteArrayLiteral("\"mechanism\": ")
+                                              + mechanismText(block, indent));
         }
     }
     return splicedOrRewritten(spliced, expected);

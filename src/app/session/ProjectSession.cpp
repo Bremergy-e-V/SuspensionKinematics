@@ -124,7 +124,8 @@ void ProjectSession::applyRockerGroups()
 void ProjectSession::resolveMechanism()
 {
     m_simulation.bind(m_linkage.linkageTemplate(), m_hardpoints.model().table(),
-                      m_project.mirror(), m_project.alignment(), m_linkage.steeringNote());
+                      m_project.mirror(), m_project.alignment(), m_linkage.steeringNote(),
+                      m_hardpoints.model().config());
     // What the table's Solved chips are held against: a point the solve does
     // not move must not read as one it does.
     const Simulation& simulation = m_simulation.simulation();

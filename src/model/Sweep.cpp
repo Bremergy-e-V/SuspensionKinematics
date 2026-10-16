@@ -161,12 +161,40 @@ QString missingGroupsNote(const AxleSolver& axle, const MechanismTemplate& mecha
         .arg(axle.label(), lost.join(QStringLiteral("; ")));
 }
 
+/// One side bound to the linkage the configuration describes, or -- when that
+/// is not a corner that moves as one -- to the one the roles imply, with a
+/// warning in @p warnings saying why.
+std::optional<CornerSolver> bindConfigured(const MechanismTemplate& named,
+                                           const HardpointTable& table,
+                                           const std::optional<StaticAlignment>& alignment,
+                                           const LinkageDescription& description,
+                                           const QString& token, bool mirrored,
+                                           const MirrorSpec& mirror, const QString& sideLabel,
+                                           QStringList* warnings, QString* error)
+{
+    const MechanismGraph graph = configGraph(
+        cornerPointNames(*description.templ, token, mirrored, mirror, table),
+        *description.config, *description.templ, table);
+
+    QString problem;
+    std::optional<CornerSolver> solver =
+        CornerSolver::bind(named, table, &problem, alignment, &graph);
+    if (solver) problem = describeMobilityProblem(solver->mobility());
+    if (problem.isEmpty()) return solver;
+
+    warnings->append(tr("%1: the hardpoint settings do not describe a corner that moves as "
+                        "one (%2), so it is solved from the template's roles instead.")
+                         .arg(sideLabel, problem));
+    return CornerSolver::bind(named, table, error, alignment);
+}
+
 } // namespace
 
 AxleSolver AxleSolver::build(const MechanismTemplate& mechanism, const CornerSpec& corner,
                              const HardpointTable& table, const MirrorSpec& mirror,
                              bool steeringDeclared,
-                             const std::optional<StaticAlignment>& alignment)
+                             const std::optional<StaticAlignment>& alignment,
+                             const LinkageDescription& description)
 {
     AxleSolver axle;
     axle.m_token = corner.token;
@@ -213,7 +241,13 @@ AxleSolver AxleSolver::build(const MechanismTemplate& mechanism, const CornerSpe
         if (coverage.absent) continue;
 
         QString error;
-        std::optional<CornerSolver> solver = CornerSolver::bind(named, table, &error, alignment);
+        const QString sideLabel =
+            tr("%1 %2").arg(axle.m_label, mirrored ? tr("far side") : tr("near side"));
+        std::optional<CornerSolver> solver =
+            description.isEmpty()
+                ? CornerSolver::bind(named, table, &error, alignment)
+                : bindConfigured(named, table, alignment, description, corner.token, mirrored,
+                                 mirror, sideLabel, &axle.m_warnings, &error);
         if (!solver) {
             axle.m_warnings << tr("%1 %2: %3")
                                    .arg(axle.m_label,

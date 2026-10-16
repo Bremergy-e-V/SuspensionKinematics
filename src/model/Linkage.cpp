@@ -26,7 +26,43 @@ constexpr KindName kKindNames[] = {
 const QString kCornerToken = QStringLiteral("{corner}");
 const QString kSideToken = QStringLiteral("{side}");
 
+const char kRigid[] = "rigid";
+const char kCompressible[] = "compressible";
+const char kLine[] = "line";
+const char kPivot[] = "pivot";
+
 } // namespace
+
+QString partComplianceToString(PartCompliance compliance)
+{
+    return QLatin1String(compliance == PartCompliance::Compressible ? kCompressible : kRigid);
+}
+
+PartCompliance partComplianceFromString(const QString& text, PartCompliance fallback)
+{
+    if (text.compare(QLatin1String(kRigid), Qt::CaseInsensitive) == 0)
+        return PartCompliance::Rigid;
+    if (text.compare(QLatin1String(kCompressible), Qt::CaseInsensitive) == 0)
+        return PartCompliance::Compressible;
+    return fallback;
+}
+
+PartCompliance defaultCompliance(PartKind kind)
+{
+    return kind == PartKind::Damper ? PartCompliance::Compressible : PartCompliance::Rigid;
+}
+
+QString chainStyleToString(ChainStyle style)
+{
+    return QLatin1String(style == ChainStyle::Pivot ? kPivot : kLine);
+}
+
+ChainStyle chainStyleFromString(const QString& text, ChainStyle fallback)
+{
+    if (text.compare(QLatin1String(kLine), Qt::CaseInsensitive) == 0) return ChainStyle::Line;
+    if (text.compare(QLatin1String(kPivot), Qt::CaseInsensitive) == 0) return ChainStyle::Pivot;
+    return fallback;
+}
 
 QString partKindToString(PartKind kind)
 {
@@ -101,6 +137,7 @@ Instance instantiatePart(const PartTemplate& source, const HardpointTable& table
     for (const ChainTemplate& chain : source.chains) {
         ResolvedChain resolved;
         resolved.closed = chain.closed;
+        resolved.style = chain.style;
         bool complete = true;
 
         for (const QString& pattern : chain.points) {

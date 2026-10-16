@@ -76,6 +76,25 @@ target_link_libraries(test_hardpoint_model PRIVATE suspkin_core Qt6::Test)
 target_include_directories(test_hardpoint_model PRIVATE ../src)
 add_test(NAME hardpoint_model COMMAND test_hardpoint_model)
 
+# The template editor: its draft, its tabs and the dialog, over the same model
+# and delegates the hardpoint dock uses. Widgets, so offscreen.
+qt_add_executable(test_template_editor
+    test_template_editor.cpp
+    ../src/app/TemplateDraft.cpp
+    ../src/app/TemplateEditorDialog.cpp
+    ../src/app/TemplatePartsTab.cpp
+    ../src/app/TemplatePointsTab.cpp
+    ../src/app/TemplateSettingsTab.cpp
+    ../src/app/TemplateGraphicsTab.cpp
+    ../src/app/PartDialogs.cpp
+    ../src/app/HardpointDelegates.cpp
+    ../src/app/ExpressionSpinBox.cpp
+    ../src/app/HardpointModel.cpp)
+target_link_libraries(test_template_editor PRIVATE suspkin_core Qt6::Widgets Qt6::Test)
+target_include_directories(test_template_editor PRIVATE ../src)
+add_test(NAME template_editor COMMAND test_template_editor)
+set_tests_properties(template_editor PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+
 # The session layer: the live state a project is unfolded into, with no widget
 # in it. The model is compiled in beside it because a document owns one. The
 # wait cursor is QtGui's, so the platform is offscreen like the icons'.
@@ -198,6 +217,13 @@ qt_add_executable(test_kinematics test_kinematics.cpp)
 target_link_libraries(test_kinematics PRIVATE suspkin_core Qt6::Test)
 add_test(NAME kinematics COMMAND test_kinematics)
 
+# The closed-form corner solve as it was, kept as the reference the solve built
+# from the configuration is held to.
+qt_add_executable(test_graph_solver test_graph_solver.cpp support/ReferenceCorner.cpp)
+target_include_directories(test_graph_solver PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_graph_solver PRIVATE suspkin_core Qt6::Test)
+add_test(NAME graph_solver COMMAND test_graph_solver)
+
 qt_add_executable(test_hardpoint_generator test_hardpoint_generator.cpp)
 target_link_libraries(test_hardpoint_generator PRIVATE suspkin_core Qt6::Test)
 add_test(NAME hardpoint_generator COMMAND test_hardpoint_generator)
@@ -209,6 +235,10 @@ add_test(NAME mesh_query COMMAND test_mesh_query)
 qt_add_executable(test_rocker_design test_rocker_design.cpp)
 target_link_libraries(test_rocker_design PRIVATE suspkin_core Qt6::Test)
 add_test(NAME rocker_design COMMAND test_rocker_design)
+
+qt_add_executable(test_pushrod_design test_pushrod_design.cpp)
+target_link_libraries(test_pushrod_design PRIVATE suspkin_core Qt6::Test)
+add_test(NAME pushrod_design COMMAND test_pushrod_design)
 
 qt_add_executable(test_project test_project.cpp)
 target_link_libraries(test_project PRIVATE suspkin_core Qt6::Test)

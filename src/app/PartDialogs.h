@@ -46,33 +46,6 @@ private:
     QDialogButtonBox* m_buttons = nullptr;
 };
 
-/// The template's parts, to be relabelled or taken out.
-///
-/// Nothing is written until OK, and then only what changed, each as a patch of
-/// the user's own file. The last part cannot be deleted: a template with no
-/// parts is not a template the reader will open again.
-class EditPartsDialog : public QDialog {
-    Q_OBJECT
-
-public:
-    explicit EditPartsDialog(const LinkageTemplate& templ, QWidget* parent = nullptr);
-
-    /// New labels, by part id -- only for parts whose label changed.
-    QHash<QString, QString> relabelled() const;
-    /// Ids of the parts to take out.
-    QStringList removed() const;
-
-private:
-    void refreshButtons();
-
-    const LinkageTemplate& m_templ;
-    QTableWidget* m_table = nullptr;
-    QStringList m_removed;
-    QDialogButtonBox* m_buttons = nullptr;
-    class QPushButton* m_rename = nullptr;
-    class QPushButton* m_delete = nullptr;
-};
-
 /// What a part kind is called in a dialog.
 QString partKindLabel(PartKind kind);
 

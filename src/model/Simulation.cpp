@@ -99,7 +99,7 @@ QSet<QString> Simulation::solvedPoints() const
 Simulation Simulation::build(const LinkageTemplate& templ, const HardpointTable& table,
                              const MirrorSpec& mirror,
                              const QHash<QString, StaticAlignment>& alignment,
-                             const QString& steeringNote)
+                             const QString& steeringNote, const HardpointConfigMap* config)
 {
     Simulation simulation;
 
@@ -138,7 +138,8 @@ Simulation Simulation::build(const LinkageTemplate& templ, const HardpointTable&
             AxleSolver axle = AxleSolver::build(
                 mechanism, corner, table, mirror, steeringDeclared,
                 stated == alignment.constEnd() ? std::nullopt
-                                               : std::optional<StaticAlignment>(*stated));
+                                               : std::optional<StaticAlignment>(*stated),
+                LinkageDescription{ &templ, config });
             if (axle.isEmpty()) continue;
             simulation.m_axles.push_back(std::move(axle));
         }
