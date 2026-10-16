@@ -113,6 +113,8 @@ private slots:
     void aRockerLayoutPlacesOnlyThePushrodsOuterEnd();
     void aStrutInLineSolvesWithItsDamperMeasured();
     void aDamperAloneHangsOffTheWishbone();
+    void aCustomOffsetPutsTheOutboardEndAnywhere();
+    void theStrutsInnerEndAndEyeMoveAsOne();
     void theFarSideIsPlacedAndDescribedToo();
     void anOffsetPastTheChassisIsRefused();
     void designsRoundTripThroughJson();
@@ -198,6 +200,57 @@ void TestPushrodDesign::aStrutInLineSolvesWithItsDamperMeasured()
     const CornerPose bump = corner->poseAtWheelTravel(20.0);
     QVERIFY(bump.valid);
     QVERIFY(bump.damperLength < corner->designPose().damperLength); // bump compresses it
+}
+
+void TestPushrodDesign::aCustomOffsetPutsTheOutboardEndAnywhere()
+{
+    PushrodDesign custom = design(PushrodLayout::InlineDamper);
+    custom.customOutboard = true;
+    custom.outboardShift = Vec3(15.0, 30.0, -10.0); // forward, inboard, down
+
+    const Vec3 left(0.0, 540.0, 300.0);
+    const PushrodPoints near = layOutPushrod(custom, left, std::nullopt, nullptr);
+    QVERIFY2(near.ok, qPrintable(near.error));
+    QCOMPARE(near.outboard, Vec3(15.0, 510.0, 290.0));
+    // Inboard on the right is +y.
+    const PushrodPoints far = layOutPushrod(custom, Vec3(0.0, -540.0, 300.0), std::nullopt, nullptr);
+    QCOMPARE(far.outboard, Vec3(15.0, -510.0, 290.0));
+    // The damper's eye is still on the pushrod's own line.
+    const Vec3 along = (near.outboard - near.inboard).normalized();
+    QVERIFY(distance(near.damperEye, near.inboard + along * custom.damperLength) < 1e-9);
+
+    // Off the ball joint's line, the strut still solves.
+    const HardpointTable table = frontLeftCorner();
+    const LinkageTemplate templ = builtinLinkageTemplate();
+    const PushrodPlan plan = planPushrods({ custom }, templ, MirrorSpec{}, table, table, nullptr);
+    QVERIFY2(plan.ok(), qPrintable(plan.points.error));
+    const std::optional<CornerSolver> corner =
+        solvePlanned(plan, inferHardpointConfig(table, templ, MirrorSpec{}));
+    QVERIFY(corner);
+    QVERIFY2(corner->mobility().isDetermined(),
+             qPrintable(describeMobilityProblem(corner->mobility())));
+
+    const std::vector<PushrodDesign> back =
+        pushrodDesignsFromJson(pushrodDesignsToJson({ custom }));
+    QCOMPARE(back.size(), std::size_t(1));
+    QVERIFY(back.front() == custom);
+}
+
+void TestPushrodDesign::theStrutsInnerEndAndEyeMoveAsOne()
+{
+    const HardpointTable table = frontLeftCorner();
+    const LinkageTemplate templ = builtinLinkageTemplate();
+    const MirrorSpec mirror;
+    const PushrodPlan plan = planPushrods({ design(PushrodLayout::InlineDamper) }, templ, mirror,
+                                          table, table, nullptr);
+    QVERIFY2(plan.ok(), qPrintable(plan.points.error));
+    const std::vector<QStringList> groups =
+        pushrodGroups({ design(PushrodLayout::InlineDamper) }, templ, mirror, plan.points.table);
+    QCOMPARE(groups.size(), std::size_t(2)); // both sides
+    QCOMPARE(groups.front(), (QStringList{ QStringLiteral("F_PushRod_I"),
+                                           QStringLiteral("F_Damper_O") }));
+    QVERIFY(pushrodGroups({ design(PushrodLayout::Rocker) }, templ, mirror, plan.points.table)
+                .empty());
 }
 
 void TestPushrodDesign::aDamperAloneHangsOffTheWishbone()

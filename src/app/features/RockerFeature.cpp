@@ -71,7 +71,7 @@ private:
 
         const DesignPlan& plan = dialog.plan();
         if (!plan.ok() || plan.count(DesignChange::Kind::Added) + plan.count(DesignChange::Kind::Moved) == 0) {
-            session.applyRockerGroups();
+            session.applyRigidGroups();
             m_context.showStatus(tr("Rockers saved; no point moved."), 6000);
             return;
         }
