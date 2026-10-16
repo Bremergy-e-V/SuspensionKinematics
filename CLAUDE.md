@@ -753,8 +753,14 @@ as `:/templates/...` so the tests read the same bytes the application ships.
 ## Wheels
 
 **Geometry > Add Wheels** puts a copy of one tyre model and one rim model at
-each of four hardpoints the user picks -- a wheel being the two together. The
-placement is pure and testable: `src/model/Wheels.*`.
+each wheel centre -- a wheel being the two together. The placement is pure and
+testable: `src/model/Wheels.*`.
+
+- The dialog asks for **one centre per axle**, from the points the table lists;
+  the far wheel goes on that point's mirror image (`mirrorImageName()`: its
+  ghost, or a point of the workbook's own at the reflection), and each of the
+  two lands in the corner its y says. `WheelSpec` still names all four corners,
+  so the far one names a ghost and follows it through renames.
 
 - The `WheelSpec` the project stores names *hardpoints*, not coordinates, so a
   wheel centre that gets edited in the table takes its wheel with it

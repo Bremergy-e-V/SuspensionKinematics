@@ -25,31 +25,30 @@ const char kNoPoint[] = "";
 
 } // namespace
 
-WheelDialog::WheelDialog(const HardpointTable& table, const WheelSpec& spec,
+WheelDialog::WheelDialog(const HardpointTable& table, MirrorAxis mirror, const WheelSpec& spec,
                          const QString& tyrePath, const QString& rimPath,
                          const QString& browseDirectory, QWidget* parent)
-    : QDialog(parent), m_table(table), m_browseDirectory(browseDirectory)
+    : QDialog(parent), m_table(table), m_mirror(mirror), m_browseDirectory(browseDirectory)
 {
     setWindowTitle(tr("Add wheels"));
 
-    // --- the four centres --------------------------------------------------
+    // --- one centre per axle -----------------------------------------------
     auto* cornerBox = new QGroupBox(tr("Wheel centres"), this);
     auto* cornerForm = new QFormLayout(cornerBox);
-    for (const WheelCorner corner : kWheelCorners) {
+    const QString axleLabels[] = { tr("Front axle"), tr("Rear axle") };
+    for (int axle = 0; axle < int(m_axles.size()); ++axle) {
         auto* combo = new QComboBox(cornerBox);
         combo->addItem(tr("- not used -"), QString::fromLatin1(kNoPoint));
-        for (int row = 0; row < static_cast<int>(m_table.points.size()); ++row) {
-            const Hardpoint& point = m_table.points[static_cast<std::size_t>(row)];
-            // A ghost is the same point on the far side, and is called so.
-            const QString shown = isGhostAt(m_table, row)
-                                      ? tr("%1 (mirrored side)").arg(point.mirrorOf)
-                                      : point.name;
-            combo->addItem(shown, point.name);
-        }
-        combo->setToolTip(tr("The hardpoint at the centre of this wheel. The models are placed "
-                             "there, and follow it when it moves."));
-        m_corners[static_cast<std::size_t>(corner)] = combo;
-        cornerForm->addRow(wheelCornerLabel(corner), combo);
+        // The points the table lists: a ghost is the far wheel, not a choice.
+        for (int row = 0; row < static_cast<int>(m_table.points.size()); ++row)
+            if (!isGhostAt(m_table, row))
+                combo->addItem(m_table.points[std::size_t(row)].name,
+                               m_table.points[std::size_t(row)].name);
+        combo->setToolTip(tr("The hardpoint at the centre of this axle's wheel. The wheel on the "
+                             "other side goes on its mirror image. The models are placed there, "
+                             "and follow the point when it moves."));
+        m_axles[std::size_t(axle)] = combo;
+        cornerForm->addRow(axleLabels[axle], combo);
         connect(combo, &QComboBox::currentIndexChanged, this, [this] { refreshSummary(); });
     }
 
@@ -60,7 +59,8 @@ WheelDialog::WheelDialog(const HardpointTable& table, const WheelSpec& spec,
         WheelSpec guessed = guessWheelSpec(m_table);
         // Only the four points are a guess; how the models are placed is the
         // user's setting and is left alone.
-        for (const WheelCorner corner : kWheelCorners) fillCorner(corner, guessed.point(corner));
+        for (int axle = 0; axle < int(m_axles.size()); ++axle)
+            fillAxle(axle, axleCentre(guessed, axle));
         refreshSummary();
     });
     cornerForm->addRow(QString(), guess);
@@ -160,9 +160,9 @@ QLineEdit* WheelDialog::buildModelRow(QFormLayout* form, const QString& label, c
     return edit;
 }
 
-void WheelDialog::fillCorner(WheelCorner corner, const QString& name)
+void WheelDialog::fillAxle(int axle, const QString& name)
 {
-    QComboBox* combo = m_corners[static_cast<std::size_t>(corner)];
+    QComboBox* combo = m_axles[std::size_t(axle)];
     int index = combo->findData(name);
     if (index < 0 && !name.isEmpty()) {
         // A point the project remembers that this workbook does not have. Kept
@@ -174,9 +174,40 @@ void WheelDialog::fillCorner(WheelCorner corner, const QString& name)
     combo->setCurrentIndex(index < 0 ? 0 : index);
 }
 
+QString WheelDialog::axleCentre(const WheelSpec& spec, int axle) const
+{
+    // The left corner first, as kWheelCorners lists it.
+    const bool front = axle == 0;
+    for (const WheelCorner corner : kWheelCorners) {
+        const QString& name = spec.point(corner);
+        if (isFrontWheel(corner) != front || name.isEmpty()) continue;
+        // A wheel on a ghost is the far wheel of the ghost's source.
+        const int row = m_table.indexOf(name);
+        return isGhostAt(m_table, row) ? m_table.points[std::size_t(row)].mirrorOf : name;
+    }
+    return {};
+}
+
+void WheelDialog::setAxle(WheelSpec& spec, int axle, const QString& name) const
+{
+    const bool front = axle == 0;
+    const WheelCorner left = front ? WheelCorner::FrontLeft : WheelCorner::RearLeft;
+    const WheelCorner right = front ? WheelCorner::FrontRight : WheelCorner::RearRight;
+    const Hardpoint* point = m_table.find(name);
+    if (!point) {
+        spec.setPoint(left, name); // not in this table: kept as the project had it
+        return;
+    }
+    const QString image = mirrorImageName(m_table, name, m_mirror);
+    // Left is +y, whichever of the two the user picked.
+    const bool pickedLeft = point->coord[1] >= 0.0;
+    spec.setPoint(pickedLeft ? left : right, name);
+    spec.setPoint(pickedLeft ? right : left, image);
+}
+
 void WheelDialog::applySpec(const WheelSpec& spec)
 {
-    for (const WheelCorner corner : kWheelCorners) fillCorner(corner, spec.point(corner));
+    for (int axle = 0; axle < int(m_axles.size()); ++axle) fillAxle(axle, axleCentre(spec, axle));
     m_modelSide->setCurrentIndex(m_modelSide->findData(int(spec.modelSide)));
     m_alignToCenter->setChecked(spec.alignToCenter);
 }
@@ -184,9 +215,9 @@ void WheelDialog::applySpec(const WheelSpec& spec)
 WheelSpec WheelDialog::spec() const
 {
     WheelSpec spec;
-    for (const WheelCorner corner : kWheelCorners) {
-        spec.setPoint(corner,
-                      m_corners[static_cast<std::size_t>(corner)]->currentData().toString());
+    for (int axle = 0; axle < int(m_axles.size()); ++axle) {
+        const QString name = m_axles[std::size_t(axle)]->currentData().toString();
+        if (!name.isEmpty()) setAxle(spec, axle, name);
     }
     spec.modelSide = static_cast<WheelModelSide>(m_modelSide->currentData().toInt());
     spec.alignToCenter = m_alignToCenter->isChecked();
@@ -209,7 +240,7 @@ void WheelDialog::refreshSummary()
 
     QStringList lines;
     if (placements.empty()) {
-        lines << tr("Pick the hardpoint each wheel is centred on.");
+        lines << tr("Pick the hardpoint each axle's wheel is centred on.");
     } else if (models == 0) {
         lines << tr("Pick a tyre model, a rim model, or both.");
     } else {

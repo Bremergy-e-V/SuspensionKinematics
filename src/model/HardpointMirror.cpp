@@ -182,6 +182,20 @@ HardpointTable withoutGhosts(const HardpointTable& table)
     return kept;
 }
 
+QString mirrorImageName(const HardpointTable& table, const QString& name, MirrorAxis axis)
+{
+    const Hardpoint* source = table.find(name);
+    if (!source) return {};
+    for (const Hardpoint& point : table.points)
+        if (point.mirrorOf == name) return point.name;
+
+    const Hardpoint reflected = reflectedPoint(*source, axis);
+    if (samePlace(reflected, *source)) return {};
+    for (const Hardpoint& point : table.points)
+        if (samePlace(point, reflected)) return point.name;
+    return {};
+}
+
 std::vector<Hardpoint> missingMirrors(const HardpointTable& table, const MirrorSpec& spec)
 {
     const int flipped = axisIndex(spec.axis);

@@ -76,6 +76,11 @@ bool isGhostAt(const HardpointTable& table, int row);
 /// measured on. The far side is the project's to work out, not the file's.
 HardpointTable withoutGhosts(const HardpointTable& table);
 
+/// The name of @p name's mirror image in @p table: a ghost of it, or else a
+/// point of the table's own at its reflection across @p axis. Empty when the
+/// far side has neither -- a point on the mirror plane, say.
+QString mirrorImageName(const HardpointTable& table, const QString& name, MirrorAxis axis);
+
 /// The ghosts @p table is missing: one for every point that is off the mirror
 /// plane, not itself a mirror, whose mirrored name is free and whose far side
 /// no point of the table already occupies. In table order, each stamped with

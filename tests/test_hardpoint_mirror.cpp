@@ -38,7 +38,24 @@ private slots:
     void replaceNamingSkipsNamesItDoesNotMatch();
     void aRuleThatWouldRenameOntoItselfIsRefused();
     void specsSurviveTheirTextForm();
+    void theMirrorImageIsAGhostOrAPointAtTheReflection();
 };
+
+void TestHardpointMirror::theMirrorImageIsAGhostOrAPointAtTheReflection()
+{
+    HardpointTable table = mirrorHardpoints(sample(), { 0 }, MirrorSpec{}).table;
+    QCOMPARE(mirrorImageName(table, QStringLiteral("F_LCA_O"), MirrorAxis::Y),
+             QStringLiteral("F_LCA_O_M"));
+
+    // A workbook listing both sides under its own names.
+    table.points.push_back(make("R_LCA_F", -300.0, -220.0, 150.0));
+    QCOMPARE(mirrorImageName(table, QStringLiteral("F_LCA_F"), MirrorAxis::Y),
+             QStringLiteral("R_LCA_F"));
+
+    // On the mirror plane, a point is its own image, and there is no far side.
+    QVERIFY(mirrorImageName(table, QStringLiteral("CHASSIS_CG"), MirrorAxis::Y).isEmpty());
+    QVERIFY(mirrorImageName(table, QStringLiteral("NOWHERE"), MirrorAxis::Y).isEmpty());
+}
 
 void TestHardpointMirror::suffixMirrorNegatesTheChosenAxis()
 {

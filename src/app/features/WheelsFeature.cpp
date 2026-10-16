@@ -90,7 +90,7 @@ private:
 
         const Project& project = m_context.project();
         const WheelsRef& wheels = project.wheels();
-        WheelDialog dialog(m_context.hardpoints()->table(), wheels.spec,
+        WheelDialog dialog(m_context.hardpoints()->table(), project.mirror().axis, wheels.spec,
                            project.absolutePath(wheels.tyre.relativePath),
                            project.absolutePath(wheels.rim.relativePath),
                            geometryDialogDirectory(project), m_context.window());
