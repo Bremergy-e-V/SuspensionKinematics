@@ -141,6 +141,7 @@ PartTemplate NewPartDialog::part() const
     part.label = m_label->text().trimmed();
     part.id = uniquePartId(m_templ, part.label);
     part.kind = partKindFromString(m_kind->currentData().toString());
+    part.compliance = defaultCompliance(part.kind);
     part.perCorner = false;
     ChainTemplate chain;
     for (int i = 0; i < m_points->count(); ++i) chain.points << m_points->item(i)->text();
@@ -148,121 +149,5 @@ PartTemplate NewPartDialog::part() const
     part.chains.push_back(chain);
     return part;
 }
-
-// ---------------------------------------------------------------------------
-// Editing the template's parts
-// ---------------------------------------------------------------------------
-
-EditPartsDialog::EditPartsDialog(const LinkageTemplate& templ, QWidget* parent)
-    : QDialog(parent), m_templ(templ)
-{
-    setWindowTitle(tr("Edit Parts"));
-
-    auto* layout = new QVBoxLayout(this);
-    auto* intro = new QLabel(tr("The parts the project's linkage template draws. Double-click a "
-                                "label to rename it. Nothing is written until OK, and then only "
-                                "what changed."),
-                             this);
-    intro->setWordWrap(true);
-    layout->addWidget(intro);
-
-    m_table = new QTableWidget(static_cast<int>(templ.parts.size()), PartColumnCount, this);
-    m_table->setHorizontalHeaderLabels(
-        { tr("Label"), tr("Kind"), tr("Drawn"), tr("Points") });
-    m_table->verticalHeader()->hide();
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_table->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
-    m_table->horizontalHeader()->setStretchLastSection(true);
-
-    for (int row = 0; row < static_cast<int>(templ.parts.size()); ++row) {
-        const PartTemplate& part = templ.parts[static_cast<std::size_t>(row)];
-
-        auto* label = new QTableWidgetItem(part.label);
-        // The id rides along with the row: it is the key the patch finds the
-        // part by, whatever its label has been changed to.
-        label->setData(Qt::UserRole, part.id);
-        label->setToolTip(tr("Id: %1").arg(part.id));
-        m_table->setItem(row, LabelColumn, label);
-
-        QStringList chains;
-        for (const ChainTemplate& chain : part.chains) {
-            chains << chain.points.join(QStringLiteral(" - "))
-                          + (chain.closed ? tr(" (closed)") : QString());
-        }
-        const QPair<int, QString> readOnly[] = {
-            { KindColumn, partKindLabel(part.kind) },
-            { DrawnColumn, part.perCorner ? tr("Every corner, both sides") : tr("Once") },
-            { PointsColumn, chains.join(QStringLiteral("; ")) },
-        };
-        for (const auto& [column, text] : readOnly) {
-            auto* item = new QTableWidgetItem(text);
-            item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-            item->setToolTip(text);
-            m_table->setItem(row, column, item);
-        }
-    }
-    m_table->resizeColumnsToContents();
-    layout->addWidget(m_table, 1);
-
-    auto* actions = new QHBoxLayout();
-    m_rename = new QPushButton(tr("Rename"), this);
-    m_delete = new QPushButton(tr("Delete"), this);
-    actions->addWidget(m_rename);
-    actions->addWidget(m_delete);
-    actions->addStretch(1);
-    layout->addLayout(actions);
-
-    m_buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(m_buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(m_buttons);
-
-    connect(m_rename, &QPushButton::clicked, this, [this] {
-        const int row = m_table->currentRow();
-        if (row >= 0) m_table->editItem(m_table->item(row, LabelColumn));
-    });
-    connect(m_delete, &QPushButton::clicked, this, [this] {
-        const int row = m_table->currentRow();
-        if (row < 0 || m_table->rowCount() <= 1) return;
-        m_removed << m_table->item(row, LabelColumn)->data(Qt::UserRole).toString();
-        m_table->removeRow(row);
-        refreshButtons();
-    });
-    connect(m_table, &QTableWidget::currentCellChanged, this, [this] { refreshButtons(); });
-    if (m_table->rowCount() > 0) m_table->selectRow(0);
-    refreshButtons();
-    resize(720, 440);
-}
-
-void EditPartsDialog::refreshButtons()
-{
-    const bool picked = m_table->currentRow() >= 0;
-    m_rename->setEnabled(picked);
-    // A template with no parts is one the reader refuses, so the last one stays.
-    m_delete->setEnabled(picked && m_table->rowCount() > 1);
-    m_delete->setToolTip(m_table->rowCount() > 1
-                             ? QString()
-                             : tr("A template needs at least one part."));
-}
-
-QHash<QString, QString> EditPartsDialog::relabelled() const
-{
-    QHash<QString, QString> changed;
-    for (int row = 0; row < m_table->rowCount(); ++row) {
-        const QTableWidgetItem* item = m_table->item(row, LabelColumn);
-        const QString id = item->data(Qt::UserRole).toString();
-        const QString label = item->text().trimmed();
-        for (const PartTemplate& part : m_templ.parts) {
-            if (part.id != id) continue;
-            // An emptied label is not a rename: the part would read as its id.
-            if (!label.isEmpty() && label != part.label) changed.insert(id, label);
-            break;
-        }
-    }
-    return changed;
-}
-
-QStringList EditPartsDialog::removed() const { return m_removed; }
 
 } // namespace suspkin

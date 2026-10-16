@@ -76,70 +76,6 @@ private:
         if (written) m_context.showStatus(tr("Added the part \"%1\"").arg(part.label), 5000);
     }
 
-    void editPartsDialog()
-    {
-        LinkageDocument& linkage = m_context.session().linkage();
-        if (linkage.linkageTemplate().isEmpty()) return;
-        const LinkageTemplate before = linkage.linkageTemplate();
-
-        EditPartsDialog dialog(before, m_context.window());
-        if (dialog.exec() != QDialog::Accepted) return;
-        const QHash<QString, QString> relabelled = dialog.relabelled();
-        const QStringList removed = dialog.removed();
-        if (relabelled.isEmpty() && removed.isEmpty()) return;
-
-        SessionMessage problem;
-        const bool written = linkage.patch(
-            [&](const QByteArray& bytes, QString* error) {
-                QByteArray out = bytes;
-                for (const QString& id : removed) {
-                    out = removeTemplatePart(out, id, error);
-                    if (out.isEmpty()) return out;
-                }
-                for (auto it = relabelled.constBegin(); it != relabelled.constEnd(); ++it) {
-                    out = setTemplatePartLabel(out, it.key(), it.value(), error);
-                    if (out.isEmpty()) return out;
-                }
-                return out;
-            },
-            tr("The parts could not be changed."), &problem);
-        m_context.showProblem(problem);
-        if (!written) return;
-
-        moveRelabelledBodies(before, relabelled);
-        m_context.showStatus(tr("Parts updated in the linkage template"), 5000);
-    }
-
-    /// A part's label is also the name of the body the configuration table's
-    /// Part columns offer. A relabelled part takes the rows that named it along,
-    /// rather than leaving them all pointing at a body that is no longer there.
-    void moveRelabelledBodies(const LinkageTemplate& before,
-                              const QHash<QString, QString>& relabelled)
-    {
-        ProjectSession& session = m_context.session();
-        HardpointConfigMap config = m_context.hardpoints()->config();
-        const BodyCatalog catalog = bodyCatalog(session.linkage().linkageTemplate());
-        int moved = 0;
-        for (auto it = relabelled.constBegin(); it != relabelled.constEnd(); ++it) {
-            for (const PartTemplate& part : before.parts) {
-                if (part.id != it.key()) continue;
-                PartTemplate renamed = part;
-                renamed.label = it.value();
-                const QString from = partBodyName(part);
-                const QString to = partBodyName(renamed);
-                if (from == to || catalog.contains(from)) continue;
-                moved += renameBody(config, from, to);
-                // True of every step, which all describe this part: an undo must
-                // not put back rows naming a body the template no longer has.
-                session.history().renameBody(from, to);
-            }
-        }
-        if (moved > 0) {
-            m_context.hardpoints()->setConfig(config);
-            session.hardpoints().captureConfig();
-        }
-    }
-
     void importLinkageTemplateDialog()
     {
         const QString path = QFileDialog::getOpenFileName(
@@ -227,16 +163,6 @@ private:
             .enabledWhen = [this] {
                 return templateLoaded() && m_context.viewport()->selectedHardpoints().size() >= 2;
             },
-        });
-
-        commands.add({
-            .id = QStringLiteral("linkage.editParts"),
-            .text = tr("&Edit Parts..."),
-            .icon = Icon::Edit,
-            .statusTip = tr("Rename or delete the parts the template draws."),
-            .ribbon = { { page, tr("Parts"), RibbonButton::Small, nullptr, 30 } },
-            .run = [this] { editPartsDialog(); },
-            .enabledWhen = [this] { return templateLoaded(); },
         });
     }
 

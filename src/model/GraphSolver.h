@@ -39,6 +39,11 @@ struct GraphMobility {
     }
 };
 
+/// What is wrong with a linkage whose mobility is @p mobility, in words -- the
+/// points nothing carries, the motions left free and the bodies they move, or a
+/// linkage locked solid. Empty when it moves as one corner.
+QString describeMobilityProblem(const GraphMobility& mobility);
+
 /// The solve of any linkage a @ref MechanismGraph describes.
 ///
 /// Compiling does the bookkeeping once: bodies joined rigidly become one group,

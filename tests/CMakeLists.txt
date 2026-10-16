@@ -76,6 +76,25 @@ target_link_libraries(test_hardpoint_model PRIVATE suspkin_core Qt6::Test)
 target_include_directories(test_hardpoint_model PRIVATE ../src)
 add_test(NAME hardpoint_model COMMAND test_hardpoint_model)
 
+# The template editor: its draft, its tabs and the dialog, over the same model
+# and delegates the hardpoint dock uses. Widgets, so offscreen.
+qt_add_executable(test_template_editor
+    test_template_editor.cpp
+    ../src/app/TemplateDraft.cpp
+    ../src/app/TemplateEditorDialog.cpp
+    ../src/app/TemplatePartsTab.cpp
+    ../src/app/TemplatePointsTab.cpp
+    ../src/app/TemplateSettingsTab.cpp
+    ../src/app/TemplateGraphicsTab.cpp
+    ../src/app/PartDialogs.cpp
+    ../src/app/HardpointDelegates.cpp
+    ../src/app/ExpressionSpinBox.cpp
+    ../src/app/HardpointModel.cpp)
+target_link_libraries(test_template_editor PRIVATE suspkin_core Qt6::Widgets Qt6::Test)
+target_include_directories(test_template_editor PRIVATE ../src)
+add_test(NAME template_editor COMMAND test_template_editor)
+set_tests_properties(template_editor PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+
 # The session layer: the live state a project is unfolded into, with no widget
 # in it. The model is compiled in beside it because a document owns one. The
 # wait cursor is QtGui's, so the platform is offscreen like the icons'.

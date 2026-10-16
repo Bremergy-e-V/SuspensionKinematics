@@ -341,6 +341,11 @@ void HardpointPanel::buildTable()
     header->setHighlightSections(false);
     header->setStretchLastSection(false);
     for (const ColumnWidth& entry : kColumnWidths) m_view->setColumnWidth(entry.column, entry.width);
+    // What each point is lives in Linkage > Template Editor, beside the parts it
+    // names; the dock is the coordinates. A warning on a row is still the dot
+    // by its name.
+    for (int column = HardpointModel::TypeColumn; column <= HardpointModel::BushingColumn; ++column)
+        m_view->setColumnHidden(column, true);
     m_view->refreshFrozenLayout();
 
     // Start in file order; clicking a header still sorts.

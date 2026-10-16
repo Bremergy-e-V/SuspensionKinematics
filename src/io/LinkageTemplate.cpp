@@ -344,11 +344,8 @@ LinkageTemplateLoadResult readTemplate(const QByteArray& bytes, const QString& l
             result.warnings.append(tr("A part without an \"id\" was skipped."));
             continue;
         }
-        if (part.chains.empty()) {
-            result.warnings.append(
-                tr("Part \"%1\" names no points to connect; it was skipped.").arg(part.id));
-            continue;
-        }
+        // A part with nothing to draw is still a body: points can be joined to
+        // it in the hardpoint settings before anybody connects a line to it.
         templ.parts.push_back(std::move(part));
     }
 

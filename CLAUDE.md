@@ -211,8 +211,18 @@ the user's own naming convention.
 
 Beside its coordinates, each point carries a `HardpointConfig`
 (`src/model/HardpointConfig.*`): a `PointType` -- the solver constraint -- the two
-bodies that meet there, and a bushing index. The configuration table in the
-hardpoint dock is the one place all of that is edited.
+bodies that meet there, and a bushing index. **This is what a corner is solved
+from** (see "The solve: a graph of bodies and joints"). It is edited in one place,
+the Settings tab of Linkage > Template Editor; the hardpoint dock shows names and
+coordinates only, its configuration columns hidden, with a warning still the dot
+by the name.
+
+- The types: `ToBody` (fixed to the chassis), `Solved` (a ball joint: Part 1 and
+  Part 2 meet there and may turn), `Welded` ("Solved, rigid": they meet and turn
+  as one -- a pushrod bolted to a damper's shaft), `Dependent` (rides Part 1; with
+  Part 2 named as well, the two are bolted together there, which is how the
+  wheel rides its upright) and `ContactPatch` (under the wheel on Part 1,
+  computed at every pose). The string `solved` is the ball joint it always was.
 
 - It is stored **by name** in the manifest, under `hardpoints.config`. Not in the
   workbook, which has nowhere to put it, and not in `edits.json`, where it would
@@ -237,9 +247,76 @@ hardpoint dock is the one place all of that is edited.
   `editRejected()`; a **warning** is stored and shown as a dot on the row, because
   half-finished is the normal state of a table on its way somewhere. Anything
   inference produces has to pass without a warning -- there is a test that says so.
-- Nothing in the solver reads this yet. `CornerSolver` takes its roles from the
-  same `mechanism` block the inference does, which is why the two agree; when the
-  solver does start reading it, that is the seam.
+- The configuration of a mirrored point is its source's: the editor writes it
+  across on Apply (`TemplateDraft::configWithMirrors()`), so the far side is
+  described by the near side alone.
+
+## The solve: a graph of bodies and joints
+
+`src/model/MechanismGraph.*` says what one corner of one side is made of: the
+bodies (rigid, or compressible -- a strut whose ends may close up) and, at every
+point, which two meet and what the joint allows. `configGraph()` builds it from
+the configuration, for the points `cornerPointNames()` gives that corner (its
+per-corner parts' chains and its mechanism roles); `roleGraph()` builds the one
+the mechanism block implies on its own. `src/model/GraphSolver.*` solves it.
+
+- **Compiling** does the bookkeeping once: bodies welded together (or both
+  naming a `Dependent` point) become one group; a group touched by exactly two
+  plain joints is a two-force link and becomes a length between them; a body
+  welded to a strut keeps the strut's far end on its own line (`Collinear`).
+- **Solving** is Gauss-Newton on each group's motion -- a turn about its posed
+  centroid, scaled to millimetres, and a shift -- with the lower wishbone's
+  motion given (the arm angle, the one free variable) and the rack moving its
+  chassis point. It starts from the last pose (`CornerPose::graphState`), which
+  is what keeps it on the branch the suspension is on, and takes **one step more
+  once the joints hold**: without that polish the answer depended, in the last
+  digits, on which bodies were in the solve.
+- `CornerSolver` is what everything else still talks to. It solves through the
+  graph and measures off the joints the roles name, exactly as before; `bind()`
+  without a graph uses `roleGraph()`, so every caller that never had a
+  configuration sees the corner it always did.
+- **The closed-form solve is kept**, unchanged, as `tests/support/ReferenceCorner.*`,
+  and `test_graph_solver` holds the new one to it to 1e-9 through bump, roll and
+  steer, with and without stated angles, a bar bearing, an unsteered axle and a
+  lower-arm pushrod -- and holds the built-in template's inferred configuration
+  to the same. Anything that changes the solve has to keep that test green.
+- `AxleSolver::build()` takes a `LinkageDescription` (the template and the
+  configuration) and solves each side from it. A side whose settings do not
+  make a corner that moves as one -- `GraphSolver::mobility()`: a point no moving
+  body carries, a motion left free, a linkage locked solid -- says so in the
+  axle's warnings (`describeMobilityProblem()`) and is **solved from the roles
+  instead**, so a half-finished table never loses the car. A configuration edit
+  re-solves (`MainWindow`'s `configChanged` handler).
+- Spin about a body's own line (a pushrod in line with its strut) is not counted
+  as a free motion: it moves no point.
+- Without a rocker, a damper is still measured: on the wishbone, or with a
+  pushrod welded in line, its length is the distance between its two ends.
+
+## The template editor
+
+**Linkage > Template Editor** (`src/app/TemplateEditorDialog.*`,
+`features/TemplateEditorFeature.cpp`) is Lotus's, in four tabs over a
+`TemplateDraft` -- a copy of the template and a `HardpointModel` of its own over a
+copy of the points and settings. Cancel throws the draft away; Apply and OK hand
+it over as one undo step ("Edit template").
+
+- **Parts** (`TemplatePartsTab`): label, kind, rigid or compressible. A part with
+  nothing drawn is kept by the reader -- it is a body the settings can name
+  before anything is connected to it. Relabelling renames the body in the
+  draft's settings at once, and in the history on Apply.
+- **Points** (`TemplatePointsTab`) and **Settings** (`TemplateSettingsTab`) are two
+  views of the draft model through `NearSideProxy`: ghosts are never shown, and
+  points on the right are hidden unless "Show the far side too" is on. The
+  settings tab says what role the selected point plays and, per axle, whether
+  what is described moves as one corner (`describeCornerMobility()`).
+- **Graphics** (`TemplateGraphicsTab`): every chain of every part, with its part,
+  line or pivot, closed, and points as `{corner}` patterns. A **pivot** is drawn
+  even between two chassis points.
+- Apply patches only what changed into the user's file -- `removeTemplatePart()`,
+  `addTemplatePart()`, `setTemplatePart()` -- then sets the settings and captures
+  them, then takes the points in: the order `restoreEditState()` keeps.
+- Which tab was showing and whether the far side was are in `ViewState`.
+- Edit Parts is gone; the editor is where parts are edited.
 
 ## Hardpoints: adding, deleting, renaming
 
@@ -520,11 +597,17 @@ as `:/templates/...` so the tests read the same bytes the application ships.
   workbook may hold one axle, or may not have been mirrored yet. Only a corner
   that partly resolves produces warnings. Do not "fix" that into warning about
   everything -- the noise buries the real misses.
+- A part says `"compliance": "rigid"` or `"compressible"` only when it is not what
+  its kind implies (a damper is compressible), and a chain `"style": "pivot"`
+  only when it is one -- so a template that never mentions either reads back as
+  it was. `setTemplatePart()` and `setTemplateMechanism()` patch the file the way
+  the other edits do; an empty mechanism is written as `{}`, because no block at
+  all reads back as the built-in one assumed.
 - A part with `"perCorner": false` names its points literally and is drawn
   exactly once -- no `{corner}`, no mirror. That is what Linkage > New Part from
   Selection writes. It belongs to no corner, so the silence above does not cover
   it: a literal part that has lost a point says so.
-- Linkage > New Part from Selection and Edit Parts edit the template through
+- Linkage > New Part from Selection and the Template Editor edit the template through
   `addTemplatePart()`, `removeTemplatePart()` and `setTemplatePartLabel()`: text
   patches, each checked by parsing the result against what a rewrite would say,
   with the rewrite as the fallback -- the same safety net `setTemplateSteering()`
@@ -907,7 +990,8 @@ src/geom/     Aabb, TriMesh, vertex welding and edge extraction, and MeshQuery:
 src/model/    Hardpoint, HardpointTable, hardpoint mirroring, what each point
               is for and the rules that check it, the linkage a template
               resolves to, where the wheel models are placed, the solver and
-              its sweeps, the Simulation that binds every axle and poses the
+              its sweeps, the graph of bodies and joints a corner is solved
+              as and the solver of it, the Simulation that binds every axle and poses the
               car, the generator that runs it the other way -- design
               targets to hardpoints -- the rocker designed as a part, putting
               a point a distance off the chassis, and the undo history of the
