@@ -91,6 +91,10 @@ struct ViewState {
     /// Where the solver had the suspension standing, so reopening a project puts
     /// the user back mid-travel if that is where they left it.
     SimulationState simulation;
+    /// Which tab of the template editor was showing when it was last closed,
+    /// and whether its point tables showed the far side too.
+    int templateEditorTab = 0;
+    bool templateEditorFarSide = false;
 };
 
 /// The window's own layout: its size and position, where the docks sit, and

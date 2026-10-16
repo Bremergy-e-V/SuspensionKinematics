@@ -435,6 +435,9 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
     project.m_view.chassisVisible = view.value(QStringLiteral("chassis")).toBool(true);
     project.m_view.labelsVisible = view.value(QStringLiteral("labels")).toBool(true);
     project.m_view.linksVisible = view.value(QStringLiteral("links")).toBool(true);
+    project.m_view.templateEditorTab = view.value(QStringLiteral("templateEditorTab")).toInt(0);
+    project.m_view.templateEditorFarSide =
+        view.value(QStringLiteral("templateEditorFarSide")).toBool(false);
     project.m_view.wheelsVisible = view.value(QStringLiteral("wheels")).toBool(true);
     project.m_view.selectedHardpoint = view.value(QStringLiteral("selected")).toInt(-1);
     // A project from before more than one point could be selected has only the
@@ -576,6 +579,8 @@ bool Project::save(QString* error) const
     view.insert(QStringLiteral("chassis"), m_view.chassisVisible);
     view.insert(QStringLiteral("labels"), m_view.labelsVisible);
     view.insert(QStringLiteral("links"), m_view.linksVisible);
+    view.insert(QStringLiteral("templateEditorTab"), m_view.templateEditorTab);
+    view.insert(QStringLiteral("templateEditorFarSide"), m_view.templateEditorFarSide);
     view.insert(QStringLiteral("wheels"), m_view.wheelsVisible);
     view.insert(QStringLiteral("selected"), m_view.selectedHardpoint);
     if (!m_view.selection.isEmpty()) {

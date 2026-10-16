@@ -753,6 +753,20 @@ int GraphSolver::freeMotions(bool includeDriven, QStringList* looseBodies) const
     return free;
 }
 
+QString describeMobilityProblem(const GraphMobility& mobility)
+{
+    QStringList problems;
+    if (!mobility.unposedPoints.isEmpty())
+        problems << tr("no moving body carries %1")
+                        .arg(mobility.unposedPoints.join(QStringLiteral(", ")));
+    if (mobility.freeWithDriveHeld > 0)
+        problems << QCoreApplication::translate("GraphSolver", "%n motion(s) left free, moving %1",
+                                                nullptr, mobility.freeWithDriveHeld)
+                        .arg(mobility.looseBodies.join(QStringLiteral(", ")));
+    if (mobility.freeWithDriveLoose == 0) problems << tr("the linkage is locked solid");
+    return problems.join(QStringLiteral("; "));
+}
+
 GraphMobility GraphSolver::mobility() const
 {
     GraphMobility out;

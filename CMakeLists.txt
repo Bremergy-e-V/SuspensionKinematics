@@ -282,6 +282,7 @@ qt_add_executable(suspkin
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
     src/app/features/RockerFeature.cpp
+    src/app/features/TemplateEditorFeature.cpp
     src/app/features/AnalysisFeature.cpp
     src/app/features/ViewFeature.cpp
     src/app/features/PanelsFeature.cpp
@@ -323,6 +324,20 @@ qt_add_executable(suspkin
     src/app/ChassisDistanceEntry.cpp
     src/app/PartDialogs.h
     src/app/PartDialogs.cpp
+    # Linkage > Template Editor: parts, points, settings and graphics over a
+    # draft of the project's template, points and settings.
+    src/app/TemplateDraft.h
+    src/app/TemplateDraft.cpp
+    src/app/TemplateEditorDialog.h
+    src/app/TemplateEditorDialog.cpp
+    src/app/TemplatePartsTab.h
+    src/app/TemplatePartsTab.cpp
+    src/app/TemplatePointsTab.h
+    src/app/TemplatePointsTab.cpp
+    src/app/TemplateSettingsTab.h
+    src/app/TemplateSettingsTab.cpp
+    src/app/TemplateGraphicsTab.h
+    src/app/TemplateGraphicsTab.cpp
     src/app/SteeringDialog.h
     src/app/SteeringDialog.cpp
     src/app/StaticAnglesDialog.h
