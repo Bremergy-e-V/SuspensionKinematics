@@ -54,6 +54,16 @@ QByteArray removeTemplatePart(const QByteArray& bytes, const QString& id, QStrin
 /// touched. The id stays: it is the key, and the label is what is read.
 QByteArray setTemplatePartLabel(const QByteArray& bytes, const QString& id, const QString& label,
                                 QString* error);
+/// @p bytes with the part whose id is @p part.id replaced by @p part as a whole
+/// -- its label, kind, compliance and chains -- and every other part, note and
+/// key left as written. Refused, with @p error set, when there is no such part.
+QByteArray setTemplatePart(const QByteArray& bytes, const PartTemplate& part, QString* error);
+/// @p bytes with its mechanism block replaced by @p mechanism, written in the
+/// order the shipped template reads in, and everything else left as written. An
+/// empty mechanism is written as an empty block rather than none, because no
+/// block at all reads back as the built-in one assumed.
+QByteArray setTemplateMechanism(const QByteArray& bytes, const MechanismTemplate& mechanism,
+                                QString* error);
 
 /// An id for a new part in @p templ, made out of @p label the way the shipped
 /// template names its own ("Camera mount" becomes "cameraMount") and numbered

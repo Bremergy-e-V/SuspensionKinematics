@@ -23,7 +23,9 @@ constexpr TypeName kTypeNames[] = {
     { PointType::Unassigned, "unassigned" },
     { PointType::ToBody, "toBody" },
     { PointType::Solved, "solved" },
+    { PointType::Welded, "welded" },
     { PointType::Dependent, "dependent" },
+    { PointType::ContactPatch, "contactPatch" },
 };
 
 const QString kCornerToken = QStringLiteral("{corner}");
@@ -71,7 +73,9 @@ QString pointTypeLabel(PointType type)
     case PointType::Unassigned: return tr("Unassigned");
     case PointType::ToBody: return tr("To Body/Ground");
     case PointType::Solved: return tr("Solved");
+    case PointType::Welded: return tr("Solved, rigid");
     case PointType::Dependent: return tr("Dependent");
+    case PointType::ContactPatch: return tr("Contact Patch");
     }
     return tr("Unassigned");
 }
@@ -86,11 +90,19 @@ QString pointTypeDescription(PointType type)
         return tr("Anchored to the chassis. The point stays where it is through the whole of "
                   "the travel, and the linkage swings about it.");
     case PointType::Solved:
-        return tr("A moving joint. Its position comes out of the solve, from the lengths of "
-                  "the members that meet here.");
+        return tr("A ball joint. Part 1 and Part 2 meet here and may turn against each other; "
+                  "where it goes comes out of the solve.");
+    case PointType::Welded:
+        return tr("A rigid joint. Part 1 and Part 2 meet here and cannot turn against each "
+                  "other -- a pushrod bolted to a damper's shaft. Fixed to a compressible part, "
+                  "the other part keeps the strut's line.");
     case PointType::Dependent:
         return tr("Carried rigidly by a body that moves -- a wheel centre on the upright, a "
                   "sensor bracket -- so it follows without being solved for.");
+    case PointType::ContactPatch:
+        return tr("Where the tyre touches the road, under the wheel on Part 1. It is worked "
+                  "out from the wheel's attitude at every position rather than carried, and "
+                  "the point itself says how high the road is.");
     }
     return QString();
 }
@@ -213,10 +225,27 @@ std::vector<ConfigIssue> validateHardpointConfig(const HardpointConfig& config,
                 tr("A solved point is where two moving bodies meet, and only one is named."));
         break;
 
+    case PointType::Welded:
+        if (config.namesBody(ground))
+            add(ConfigIssueLevel::Warning,
+                tr("A rigid joint to %1 bolts the other body to the car; make it To Body/Ground "
+                   "if that is what is meant.")
+                    .arg(ground));
+        else if (!complete)
+            add(ConfigIssueLevel::Warning,
+                tr("A rigid joint holds two bodies together, and only one is named."));
+        break;
+
     case PointType::Dependent:
         if (config.part1.isEmpty())
             add(ConfigIssueLevel::Warning,
                 tr("A dependent point needs the body that carries it."));
+        break;
+
+    case PointType::ContactPatch:
+        if (config.part1.isEmpty())
+            add(ConfigIssueLevel::Warning,
+                tr("A contact patch needs the body that carries the wheel above it."));
         break;
 
     case PointType::Unassigned:
@@ -329,9 +358,12 @@ HardpointConfigMap inferHardpointConfig(const HardpointTable& table, const Linka
         }
         assign(name, PointType::Solved, member, attached);
     };
-    const auto dependent = [&](const QString& name, const QString& carrier) {
+    const auto riding = [&](const QString& name, PointType type, const QString& carrier) {
         const QStringList at = bodiesAt(name);
-        assign(name, PointType::Dependent, at.value(0, carrier), at.value(1));
+        assign(name, type, at.value(0, carrier), at.value(1));
+    };
+    const auto dependent = [&](const QString& name, const QString& carrier) {
+        riding(name, PointType::Dependent, carrier);
     };
 
     std::vector<CornerSpec> corners = templ.corners;
@@ -386,7 +418,7 @@ HardpointConfigMap inferHardpointConfig(const HardpointTable& table, const Linka
             const QString upright = bodiesAt(mechanism.wheelCenter).value(0);
             dependent(mechanism.wheelCenter, upright);
             dependent(mechanism.wheelAxis, upright);
-            dependent(mechanism.contactPatch, upright);
+            riding(mechanism.contactPatch, PointType::ContactPatch, upright);
             for (const QString& carried : mechanism.carried) dependent(carried, upright);
         }
     }

@@ -403,8 +403,9 @@ void ViewportWidget::rebuildLinkageVertices()
                     if (a < 0 || b < 0 || a >= pointCount || b >= pointCount) continue;
                     // Both ends bolted to the car, so there is no member here
                     // to draw -- the chain is closed because that is the
-                    // topology, not because the frame has a bar across it.
-                    if (grounded(a) && grounded(b)) continue;
+                    // topology, not because the frame has a bar across it. A
+                    // pivot is drawn anyway: what it shows is the axis.
+                    if (chain.style != ChainStyle::Pivot && grounded(a) && grounded(b)) continue;
                     m_linkVertices.push_back(position(a));
                     m_linkVertices.push_back(position(b));
                 }
