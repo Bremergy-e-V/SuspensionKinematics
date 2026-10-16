@@ -134,6 +134,10 @@ add_library(suspkin_core STATIC
     src/model/GeomSolve.cpp
     src/model/Mechanism.h
     src/model/Mechanism.cpp
+    src/model/MechanismGraph.h
+    src/model/MechanismGraph.cpp
+    src/model/GraphSolver.h
+    src/model/GraphSolver.cpp
     src/model/SuspensionSolver.h
     src/model/SuspensionSolver.cpp
     src/model/Sweep.h

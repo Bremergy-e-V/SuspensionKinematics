@@ -55,6 +55,21 @@ Vec3 rotateAbout(const Vec3& p, const Axis& axis, double angle)
     return axis.origin + turned;
 }
 
+Rigid rotationAbout(const Axis& axis, double angle)
+{
+    Rigid out;
+    if (!axis.isValid()) return out;
+    // The columns are where the axes go, turned about a line through the origin;
+    // the shift is where the origin goes, turned about the real one.
+    const Axis throughOrigin{ Vec3(), axis.direction };
+    const Vec3 columns[3] = { rotateAbout(Vec3(1, 0, 0), throughOrigin, angle),
+                              rotateAbout(Vec3(0, 1, 0), throughOrigin, angle),
+                              rotateAbout(Vec3(0, 0, 1), throughOrigin, angle) };
+    for (int i = 0; i < 3; ++i) out.r[i] = Vec3(columns[0][i], columns[1][i], columns[2][i]);
+    out.t = rotateAbout(Vec3(), axis, angle);
+    return out;
+}
+
 double Circle::angleOf(const Vec3& p) const
 {
     const Vec3 offset = p - center;

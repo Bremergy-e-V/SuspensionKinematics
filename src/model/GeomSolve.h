@@ -54,6 +54,8 @@ Axis axisThrough(const Vec3& a, const Vec3& b);
 /// @p p turned about @p axis by @p angle radians, right-handed about the axis
 /// direction.
 Vec3 rotateAbout(const Vec3& p, const Axis& axis, double angle);
+/// The same turn as a rigid motion, for a body that turns about @p axis.
+Rigid rotationAbout(const Axis& axis, double angle);
 
 /// The circle a point sweeps out about an axis, as a centre, a radius and an
 /// in-plane frame. @ref at reproduces the original point at angle zero, so an

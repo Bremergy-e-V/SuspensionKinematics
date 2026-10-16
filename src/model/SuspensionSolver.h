@@ -2,6 +2,7 @@
 
 #include "geom/Vec3.h"
 #include "model/GeomSolve.h"
+#include "model/GraphSolver.h"
 #include "model/Mechanism.h"
 
 #include <QString>
@@ -168,14 +169,19 @@ struct CornerPose {
     Vec3 instantCenter;
     bool instantCenterValid = false;
 
+    /// Where every body of the linkage was, for the next solve to start from.
+    GraphState graphState;
+
     const Vec3* find(const QString& name) const;
 };
 
 /// One corner's mechanism, bound to the coordinates a table gave it.
 ///
-/// Binding resolves every name once. After that a pose costs a handful of
-/// closed-form intersections and no lookups, which is what makes a hundred-step
-/// sweep instant and a live slider possible.
+/// What moves is a @ref MechanismGraph -- the bodies and joints the
+/// configuration describes -- solved by @ref GraphSolver at every position. The
+/// mechanism's roles are what drives it and what it is read by: the lower
+/// wishbone's angle is the one free variable, the rack moves the inboard tie rod
+/// end, and camber, toe and the rest are measured off the joints the roles name.
 class CornerSolver {
 public:
     /// Resolve @p mechanism against @p table. Returns nothing, and sets
@@ -187,10 +193,19 @@ public:
     /// contact patch only says how high the ground is. Without one the table is
     /// read the way it always was -- the wheel axis point, else the patch under
     /// the wheel centre, else an upright wheel.
+    ///
+    /// @p graph is the linkage to solve. Without one it is the one the roles
+    /// imply on their own (@ref roleGraph): the double wishbone with a pushrod
+    /// and a rocker that the template's mechanism block describes.
     static std::optional<CornerSolver> bind(const MechanismTemplate& mechanism,
                                             const HardpointTable& table, QString* error,
                                             const std::optional<StaticAlignment>& alignment
-                                            = std::nullopt);
+                                            = std::nullopt,
+                                            const MechanismGraph* graph = nullptr);
+
+    /// What the linkage leaves free at design, for saying whether the
+    /// configuration describes a suspension.
+    GraphMobility mobility() const { return m_graph->mobility(); }
 
     const MechanismTemplate& mechanism() const { return m_mechanism; }
 
@@ -265,6 +280,18 @@ private:
     /// The single-degree-of-freedom solve, from an angle to everything else.
     bool solveAt(double angle, double rackTravel, const CornerPose* previous,
                  CornerPose* out) const;
+    /// Take @p graph as the linkage to solve: find the bodies the roles drive
+    /// and are read off, and compile it. @p stated is whether the wheel's
+    /// attitude was stated, which re-places the wheel axis point.
+    bool bindGraph(MechanismGraph graph, bool stated, QString* error);
+    /// Read the joints the roles name, and every point that moved, off a solved
+    /// linkage.
+    void readJoints(const GraphState& state, const Vec3& rackOffset, CornerPose* pose) const;
+    /// The graph index of the point a role names, or -1.
+    int pointIndex(const QString& name) const;
+    /// Put the bar's second axis point, which the table does not have, where
+    /// @p direction says the axis runs, and compile the linkage again.
+    bool placeBarAxis(const Vec3& direction);
     /// Fill in camber, toe, caster and the rest from a solved geometry.
     void measure(CornerPose* pose) const;
     /// Drive @p target(pose) to @p value by moving the arm angle. @p pick is
@@ -272,14 +299,15 @@ private:
     /// patch's.
     CornerPose driveTo(double value, double rackTravel, const CornerPose* previous,
                        double (*pick)(const CornerPose&)) const;
-    /// Where the drop link's upper end is in @p pose, carried by whichever body
-    /// the mechanism mounts it on. @p upright is that pose's upright motion.
-    Vec3 dropLinkOuterAt(const CornerPose& pose, const Rigid& upright) const;
-    /// Turn the bar's arm until it is a drop link's length from where the drop
-    /// link's upper end has gone. False, with the error set, when it cannot be.
-    bool solveAntiRoll(const Rigid& upright, const CornerPose* previous, CornerPose* pose) const;
-
     MechanismTemplate m_mechanism;
+    /// The linkage as given, before it is compiled; kept so that the bar's axis
+    /// can be moved and the linkage compiled again.
+    MechanismGraph m_graphSource;
+    std::optional<GraphSolver> m_graph;
+    int m_drivenBody = -1;
+    int m_uprightBody = -1;
+    int m_rackPoint = -1;
+    int m_barAxisPoint = -1; ///< the bar's second axis point, made up when the table has none
     bool m_left = true;
     /// The mechanism names a rack point, and it is the point this solve can
     /// actually move: the inboard tie rod end.
@@ -296,16 +324,9 @@ private:
     Vec3 m_antiRollDropLinkOuter, m_antiRollArmEnd, m_antiRollArmRoot, m_antiRollBearing;
     std::vector<PosedPoint> m_carried; ///< design positions of the carried points
 
+    // What the angles the measures report are read about.
     Axis m_lowerAxis, m_upperAxis, m_rockerAxis, m_antiRollAxis;
     Circle m_upperCircle, m_pushrodInnerCircle, m_antiRollCircle;
-
-    // Link lengths, which are the constraints.
-    double m_uprightLowerUpper = 0.0;
-    double m_uprightLowerTie = 0.0;
-    double m_uprightUpperTie = 0.0;
-    double m_tieRodLength = 0.0;
-    double m_pushrodLength = 0.0;
-    double m_dropLinkLength = 0.0;
 
     /// The table names a point on the wheel's axis, so the wheel's orientation
     /// is measured rather than inferred from a patch under it.

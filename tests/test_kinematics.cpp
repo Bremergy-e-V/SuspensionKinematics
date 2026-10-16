@@ -753,6 +753,9 @@ void TestKinematics::theWheelsKinematicsDoNotDependOnTheRockerGroup()
     // A corner is one degree of freedom -- the lower wishbone's angle -- held by
     // the two wishbones and the tie rod. The pushrod only drives the rocker off
     // it, so taking the whole rocker group away must not move the wheel at all.
+    // At all, to rounding: the rocker is in the same solve as the wheel now, so
+    // the last digit of a double is allowed to differ.
+    constexpr double kRounding = 1e-9;
     const HardpointTable full = frontLeftCorner();
     const HardpointTable bare = withoutRockerGroup(full);
     QVERIFY(bare.points.size() < full.points.size());
@@ -770,17 +773,17 @@ void TestKinematics::theWheelsKinematicsDoNotDependOnTheRockerGroup()
             QVERIFY(a.valid);
             QVERIFY(b.valid);
             QVERIFY(!b.hasDamper);
-            QCOMPARE(b.camber, a.camber);
-            QCOMPARE(b.toe, a.toe);
-            QCOMPARE(b.caster, a.caster);
-            QCOMPARE(b.kingpinInclination, a.kingpinInclination);
-            QCOMPARE(b.scrubRadius, a.scrubRadius);
-            QCOMPARE(b.mechanicalTrail, a.mechanicalTrail);
-            QCOMPARE(b.halfTrackChange, a.halfTrackChange);
-            QCOMPARE(b.wheelbaseChange, a.wheelbaseChange);
-            QCOMPARE(b.wheelCenter.x, a.wheelCenter.x);
-            QCOMPARE(b.wheelCenter.y, a.wheelCenter.y);
-            QCOMPARE(b.wheelCenter.z, a.wheelCenter.z);
+            QVERIFY(std::abs(b.camber - a.camber) < kRounding);
+            QVERIFY(std::abs(b.toe - a.toe) < kRounding);
+            QVERIFY(std::abs(b.caster - a.caster) < kRounding);
+            QVERIFY(std::abs(b.kingpinInclination - a.kingpinInclination) < kRounding);
+            QVERIFY(std::abs(b.scrubRadius - a.scrubRadius) < kRounding);
+            QVERIFY(std::abs(b.mechanicalTrail - a.mechanicalTrail) < kRounding);
+            QVERIFY(std::abs(b.halfTrackChange - a.halfTrackChange) < kRounding);
+            QVERIFY(std::abs(b.wheelbaseChange - a.wheelbaseChange) < kRounding);
+            QVERIFY(std::abs(b.wheelCenter.x - a.wheelCenter.x) < kRounding);
+            QVERIFY(std::abs(b.wheelCenter.y - a.wheelCenter.y) < kRounding);
+            QVERIFY(std::abs(b.wheelCenter.z - a.wheelCenter.z) < kRounding);
         }
     }
 }
