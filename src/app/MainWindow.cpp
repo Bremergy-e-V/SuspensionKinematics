@@ -164,6 +164,8 @@ void MainWindow::buildHardpointDock()
     // refused anything that could not mean something.
     connect(model, &HardpointModel::configChanged, this, [this](int row) {
         m_session->hardpoints().captureConfig();
+        // What joins what is what the corner is solved from.
+        m_session->resolveMechanism();
         // A point that has just become -- or stopped being -- a chassis pivot
         // changes what is drawn through it.
         syncGroundedPoints();

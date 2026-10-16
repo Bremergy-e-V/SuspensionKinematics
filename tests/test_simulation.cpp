@@ -1,7 +1,11 @@
+#include "io/LinkageTemplate.h"
+#include "model/HardpointConfig.h"
 #include "model/HardpointMirror.h"
 #include "model/Simulation.h"
 
 #include <QTest>
+
+#include <cmath>
 
 using namespace suspkin;
 
@@ -117,6 +121,8 @@ private slots:
     void aCornerTheTableHasNoPointsForIsSkippedSilently();
     void anAxleThatHasGoneFallsBackToTheFirstRatherThanToNothing();
     void statedStaticAnglesOutrankWhatTheTableWouldHaveSaid();
+    void aConfiguredCarSolvesTheWayItsRolesDo();
+    void settingsThatLeaveTheUprightLooseFallBackToTheRoles();
 
     // --- what it says when it cannot solve --------------------------------
     void anEmptyTableAsksForHardpoints();
@@ -197,6 +203,49 @@ void TestSimulation::statedStaticAnglesOutrankWhatTheTableWouldHaveSaid()
     // hardpoints.
     QCOMPARE(stated.axleFor(QStringLiteral("R"))->left()->wheelAttitude(),
              WheelAttitude::ContactPatch);
+}
+
+void TestSimulation::aConfiguredCarSolvesTheWayItsRolesDo()
+{
+    const LinkageTemplate templ = builtinLinkageTemplate();
+    const HardpointTable table = wholeCar();
+    const HardpointConfigMap config = inferHardpointConfig(table, templ, MirrorSpec{});
+    const Simulation roles = Simulation::build(templ, table, MirrorSpec{}, {});
+    const Simulation configured = Simulation::build(templ, table, MirrorSpec{}, {}, QString(), &config);
+    QCOMPARE(configured.axles().size(), roles.axles().size());
+    for (std::size_t i = 0; i < roles.axles().size(); ++i) {
+        const AxleSolver& a = roles.axles()[i];
+        const AxleSolver& b = configured.axles()[i];
+        // Whatever the roles had to say, and nothing about the settings.
+        QCOMPARE(b.warnings(), a.warnings());
+        QVERIFY(a.left() && b.left() && a.right() && b.right());
+        for (const double travel : { -25.0, 0.0, 25.0 }) {
+            QVERIFY(std::abs(a.left()->poseAtWheelTravel(travel).camber
+                             - b.left()->poseAtWheelTravel(travel).camber) < 1e-9);
+            QVERIFY(std::abs(a.right()->poseAtWheelTravel(travel, 5.0).toe
+                             - b.right()->poseAtWheelTravel(travel, 5.0).toe) < 1e-9);
+        }
+    }
+}
+
+void TestSimulation::settingsThatLeaveTheUprightLooseFallBackToTheRoles()
+{
+    const LinkageTemplate templ = builtinLinkageTemplate();
+    const HardpointTable table = wholeCar();
+    HardpointConfigMap config = inferHardpointConfig(table, templ, MirrorSpec{});
+    config.insert(QStringLiteral("F_TieRod_O"), HardpointConfig{});
+
+    const Simulation simulation =
+        Simulation::build(templ, table, MirrorSpec{}, {}, QString(), &config);
+    const AxleSolver* front = simulation.axleFor(QStringLiteral("F"));
+    QVERIFY(front);
+    // Said once, for the side whose settings are short, and the car still solves.
+    const QStringList settings =
+        front->warnings().filter(QStringLiteral("hardpoint settings"));
+    QCOMPARE(settings.size(), 1);
+    QVERIFY(settings.front().contains(QStringLiteral("Upright")));
+    QVERIFY(front->left() && front->right());
+    QVERIFY(front->left()->poseAtWheelTravel(20.0).valid);
 }
 
 // ---------------------------------------------------------------------------
