@@ -4,6 +4,7 @@
 #include "model/Hardpoint.h"
 #include "model/HardpointConfig.h"
 #include "model/HardpointMirror.h"
+#include "model/PushrodDesign.h"
 #include "model/RockerDesign.h"
 #include "model/Sweep.h"
 #include "model/Wheels.h"
@@ -298,6 +299,11 @@ public:
     const std::vector<RockerDesign>& rockers() const { return m_rockers; }
     void setRockers(std::vector<RockerDesign> rockers) { m_rockers = std::move(rockers); }
 
+    /// How each corner's spring is worked -- by a rocker, a pushrod in line with
+    /// the damper, or the damper alone -- and where its ends were laid out.
+    const std::vector<PushrodDesign>& pushrods() const { return m_pushrods; }
+    void setPushrods(std::vector<PushrodDesign> pushrods) { m_pushrods = std::move(pushrods); }
+
     /// Each axle's static camber and toe, by corner token, for the axles whose
     /// angles the user has stated -- Lotus's Set Static Angles. An axle that is
     /// not here has them read off its hardpoints, the way every project did
@@ -339,6 +345,7 @@ private:
     MirrorSpec m_mirror;
     std::optional<DesignParameters> m_design;
     std::vector<RockerDesign> m_rockers;
+    std::vector<PushrodDesign> m_pushrods;
     QHash<QString, StaticAlignment> m_alignment;
     QString m_lastGeometryDirectory;
     QString m_lastHardpointDirectory;

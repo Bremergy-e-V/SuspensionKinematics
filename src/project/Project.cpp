@@ -498,6 +498,7 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
     if (root.contains(QStringLiteral("design")))
         project.m_design = designParametersFromJson(root.value(QStringLiteral("design")).toObject());
     project.m_rockers = rockerDesignsFromJson(root.value(QStringLiteral("rockers")).toArray());
+    project.m_pushrods = pushrodDesignsFromJson(root.value(QStringLiteral("pushrods")).toArray());
 
     // Per axle, and only the axles that have been given angles: one that is not
     // here reads them off its hardpoints. An entry missing either number is not
@@ -627,6 +628,8 @@ bool Project::save(QString* error) const
     root.insert(QStringLiteral("mirror"), mirrorToJson(m_mirror));
     if (m_design) root.insert(QStringLiteral("design"), designParametersToJson(*m_design));
     if (!m_rockers.empty()) root.insert(QStringLiteral("rockers"), rockerDesignsToJson(m_rockers));
+    if (!m_pushrods.empty())
+        root.insert(QStringLiteral("pushrods"), pushrodDesignsToJson(m_pushrods));
     if (!m_alignment.isEmpty()) {
         QJsonObject alignment;
         for (auto it = m_alignment.begin(); it != m_alignment.end(); ++it) {
