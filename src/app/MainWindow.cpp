@@ -125,7 +125,15 @@ void MainWindow::buildHardpointDock()
     // again.
     connect(model, &HardpointModel::pointRenamed, this,
             [this](int row, const QString& from, const QString& to) {
-                m_session->wheels().followRenames({ { from, to } });
+                // The model renamed the point's ghost with it, and a far wheel
+                // may be centred on that.
+                QHash<QString, QString> renamed{ { from, to } };
+                const QString farFrom = mirroredName(from, project().mirror());
+                const QString farTo = mirroredName(to, project().mirror());
+                if (!farTo.isEmpty() && hardpoints()->table().indexOf(farTo) >= 0
+                    && hardpoints()->table().indexOf(farFrom) < 0)
+                    renamed.insert(farFrom, farTo);
+                m_session->wheels().followRenames(renamed);
 
                 // Into the project before anything is resolved again: the
                 // configuration table is refilled from the project's copy, and
@@ -605,6 +613,9 @@ void MainWindow::setHardpointTable(const HardpointTable& table, bool refit)
 
 void MainWindow::syncTableToViewport(bool refit)
 {
+    // Before the viewport takes the rows: the ghosts are rows too, and the
+    // parts are indices into all of them.
+    m_session->hardpoints().completeMirrors();
     m_viewport->setHardpoints(hardpoints()->table());
     // setHardpoints() drops the parts, because they are indices into the table
     // that has just been replaced. Resolving them again is what puts them back.

@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 
 #include <algorithm>
+#include <cmath>
 
 namespace suspkin {
 namespace {
@@ -17,6 +18,25 @@ int axisIndex(MirrorAxis axis)
     case MirrorAxis::Z: return 2;
     }
     return 1;
+}
+
+/// Closer than this, two positions are the same place. A thousandth of a
+/// millimetre is below anything a workbook is measured to.
+constexpr double kSamePlaceMm = 1e-3;
+/// Nearer the mirror plane than this, a point is its own mirror image.
+constexpr double kOnPlaneMm = 1e-6;
+
+bool samePlace(const Hardpoint& a, const Hardpoint& b)
+{
+    for (int k = 0; k < 3; ++k)
+        if (std::abs(a.coord[k] - b.coord[k]) > kSamePlaceMm) return false;
+    return true;
+}
+
+bool occupied(const HardpointTable& table, const Hardpoint& place)
+{
+    return std::any_of(table.points.begin(), table.points.end(),
+                       [&place](const Hardpoint& point) { return samePlace(point, place); });
 }
 
 } // namespace
@@ -65,7 +85,6 @@ MirrorOutcome mirrorHardpoints(const HardpointTable& table, const std::vector<in
     MirrorOutcome outcome;
     outcome.table = table;
 
-    const int axis = axisIndex(spec.axis);
     const int count = static_cast<int>(table.points.size());
 
     // The selection is resolved against the input, so appending as we go cannot
@@ -101,12 +120,8 @@ MirrorOutcome mirrorHardpoints(const HardpointTable& table, const std::vector<in
             continue;
         }
 
-        Hardpoint mirrored = source;
+        Hardpoint mirrored = reflectedPoint(source, spec.axis);
         mirrored.name = name;
-        mirrored.coord[axis] = -source.coord[axis];
-        // Negating -0.0 gives 0.0 back, but a point sitting on the mirror plane
-        // reads better as a plain zero than as its negative.
-        if (mirrored.coord[axis] == 0.0) mirrored.coord[axis] = 0.0;
         mirrored.mirrorOf = source.name;
 
         const int existing = outcome.table.indexOf(name);
@@ -138,6 +153,55 @@ MirrorOutcome mirrorHardpoints(const HardpointTable& table, const std::vector<in
                                  .arg(kept.join(QStringLiteral(", "))));
     }
     return outcome;
+}
+
+Hardpoint reflectedPoint(const Hardpoint& point, MirrorAxis axis)
+{
+    const int flipped = axisIndex(axis);
+    Hardpoint reflected = point;
+    reflected.coord[flipped] = -point.coord[flipped];
+    // Negating -0.0 gives 0.0 back, but a point sitting on the mirror plane
+    // reads better as a plain zero than as its negative.
+    if (reflected.coord[flipped] == 0.0) reflected.coord[flipped] = 0.0;
+    return reflected;
+}
+
+bool isGhostAt(const HardpointTable& table, int row)
+{
+    if (row < 0 || row >= static_cast<int>(table.points.size())) return false;
+    const Hardpoint& point = table.points[static_cast<std::size_t>(row)];
+    return point.isMirrored() && table.indexOf(point.mirrorOf) >= 0;
+}
+
+HardpointTable withoutGhosts(const HardpointTable& table)
+{
+    HardpointTable kept;
+    kept.points.reserve(table.points.size());
+    for (int row = 0; row < static_cast<int>(table.points.size()); ++row)
+        if (!isGhostAt(table, row)) kept.points.push_back(table.points[static_cast<std::size_t>(row)]);
+    return kept;
+}
+
+std::vector<Hardpoint> missingMirrors(const HardpointTable& table, const MirrorSpec& spec)
+{
+    const int flipped = axisIndex(spec.axis);
+    HardpointTable completed = table;
+    std::vector<Hardpoint> missing;
+    for (const Hardpoint& source : table.points) {
+        if (source.isMirrored() || std::abs(source.coord[flipped]) <= kOnPlaneMm) continue;
+        const QString name = mirroredName(source.name, spec);
+        if (name.isEmpty() || completed.indexOf(name) >= 0) continue;
+
+        Hardpoint ghost = reflectedPoint(source, spec.axis);
+        if (occupied(completed, ghost)) continue;
+        ghost.name = name;
+        ghost.mirrorOf = source.name;
+        // Into the table checked against, so two sources whose names mirror
+        // onto one another cannot both claim the same far-side name.
+        completed.points.push_back(ghost);
+        missing.push_back(std::move(ghost));
+    }
+    return missing;
 }
 
 QString mirrorAxisToString(MirrorAxis axis)

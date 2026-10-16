@@ -79,7 +79,7 @@ so its normals come from the real surface and a bore shades as the cylinder it i
 | `Ctrl+Shift+Z` (or `Ctrl+Y`) | Redo it |
 | `Ctrl+H` | Show or hide the hardpoint table |
 | `Ctrl+I` | Import hardpoints |
-| `Ctrl+M` | Mirror hardpoints to the other side |
+| `Ctrl+M` | Show or hide the mirrored side |
 | `Ctrl+Shift+S` / `Ctrl+E` | Overwrite the workbook / Export a workbook |
 | `Ctrl+L` | Show or hide the hardpoint labels |
 | `Ctrl+Shift+W` | Show or hide the wheels |
@@ -222,7 +222,7 @@ What counts as a change to the points:
 - what a point is for: its type, its two parts, its bushing;
 - adding, deleting and renaming a point (a wheel centred on a renamed point
   follows it back and forth);
-- Mirror Hardpoints and Generate from Design, each as one step;
+- Generate from Design, Rocker and Pushrod and Damper, each as one step;
 - the static camber and toe, which Generate from Design sets along with the
   points.
 
@@ -326,22 +326,19 @@ name. It follows your desktop's light or dark theme.
 
 ### Mirroring
 
-**Mirror Hardpoints** (`Ctrl+M`) copies points to the other side of the car. The
-mirror plane is `y = 0`, because the frame is ISO 8855 — X and Z come through
-untouched, so a mirrored corner keeps its station and its ride height. X and Z
-mirrors are there as well for the rarer cases.
+The car is symmetric, so the table holds **one side** and the other is worked
+out from it. Every point off the centre plane (`y = 0`, ISO 8855) gets a mirror
+image on the far side automatically -- it is what the far corners are drawn and
+solved from -- but it is never listed in the hardpoint table and never written
+into the workbook: what you export holds only the points you entered. A point
+whose far side the workbook already lists, at its mirror position, is left
+alone.
 
-There is no universal convention for naming the two sides, so the rule is yours
-to pick: add a suffix (`F_LCA_O` → `F_LCA_O_R`), add a prefix, or replace text
-inside the name (`L_UCA_O` → `R_UCA_O`). The dialog previews the names it would
-produce before anything happens, mirrors either the whole table or just the
-selected point, and will not make mirrors of mirrors. The rule you used is
-remembered in the project, because it is your convention and you will want it
-again.
-
-Mirrored points are ordinary hardpoints afterwards — editable, selectable, saved
-in the project. They are also written into the workbook when you ask for one, as
-new `name`/`value` rows below the existing table.
+The mirror image follows its source: move, rename or delete the source and the
+far side goes with it. In the viewport it carries the source's name and is
+drawn dimmed. **Show Mirrored Side** (`Ctrl+M`) hides it -- the markers, the
+parts drawn to them and the wheels on that side -- and the project remembers
+whether it was shown; hidden, it is still solved.
 
 ### Writing a workbook
 

@@ -104,10 +104,18 @@ public:
     /// ghost, the mirror of another. It gets no arrows and no X/Y/Z field, and
     /// is drawn dimmed. Dropped with the points, like the grounded flags.
     void setLockedPoints(const std::vector<bool>& locked);
+    /// Whether the locked points -- the mirrored side -- are drawn at all.
+    /// Hidden, they are neither drawn, labelled nor picked, and neither is a
+    /// segment or a wheel that sits on one; they are still in the table and
+    /// still solved.
+    void setLockedPointsShown(bool shown);
+    bool lockedPointsShown() const { return m_lockedShown; }
     /// Ask for the selected marker's distance to the chassis, as C does. Nothing
     /// when there is no marker that may be moved.
     void requestChassisDistance();
     bool isLockedPoint(int index) const;
+    /// A locked point while the locked points are hidden.
+    bool isHiddenPoint(int index) const { return !m_lockedShown && isLockedPoint(index); }
     /// Whether the selected marker may be moved from here: editing is on,
     /// it is not a ghost and nothing is being dragged.
     bool selectedPointMovable() const;
@@ -288,6 +296,9 @@ private:
 
     std::vector<QVector3D> m_hardpoints;
     QStringList m_hardpointNames;
+    /// What each marker is labelled with: its name, or for a ghost the name
+    /// of the point it mirrors -- the far side is the same point, not another.
+    QStringList m_labelNames;
     Aabb m_hardpointBounds;
     GpuPoints m_gpuPoints;
     bool m_pointsUploadPending = false;
@@ -312,6 +323,7 @@ private:
     /// everything the parts name.
     std::vector<bool> m_grounded;
     std::vector<bool> m_locked;
+    bool m_lockedShown = true;
     std::vector<QVector3D> m_linkVertices;
     std::vector<LinkRange> m_linkRanges;
     GpuLines m_gpuLines;

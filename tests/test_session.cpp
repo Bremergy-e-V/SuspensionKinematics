@@ -109,7 +109,7 @@ class TestSession : public QObject {
 private slots:
     void savingIsInertWhileLoading();
 
-    void overwritingTwiceDoesNotAppendMirroredRowsAgain();
+    void theMirroredSideIsNeverWrittenOrPending();
     void aRenameIsARemovalAndAnAddition();
     void aRenamedPointKeepsItsConfigurationThroughAResolve();
     void aNewWorkbookIsWrittenThenReadBack();
@@ -139,7 +139,7 @@ void TestSession::savingIsInertWhileLoading()
     QVERIFY(!session.savePending());
 }
 
-void TestSession::overwritingTwiceDoesNotAppendMirroredRowsAgain()
+void TestSession::theMirroredSideIsNeverWrittenOrPending()
 {
     QTemporaryDir directory;
     ProjectSession session(makeProject(directory));
@@ -148,31 +148,25 @@ void TestSession::overwritingTwiceDoesNotAppendMirroredRowsAgain()
     HardpointModel& model = document.model();
     const int imported = model.rowCount();
 
-    model.setTable(mirrorHardpoints(model.table(), {}, MirrorSpec{}).table);
-    document.captureMirrorProvenance();
-    const int mirrored = model.rowCount();
-    QVERIFY(mirrored > imported);
-    QVERIFY(!document.pendingEdits().isEmpty());
+    document.completeMirrors();
+    QVERIFY(model.rowCount() > imported);
+    // The far side is worked out, not an edit.
+    QVERIFY(document.pendingEdits().isEmpty());
+
+    // An edit of the near side is pending, and nothing of the far side is.
+    QVERIFY(model.setData(model.index(0, HardpointModel::ZColumn), 1.0, Qt::EditRole));
+    const HardpointEdits pending = document.pendingEdits();
+    QCOMPARE(int(pending.changed.size()), 1);
+    QVERIFY(pending.added.empty());
 
     SessionMessage problem;
     QVERIFY2(document.overwriteWorkbook(&problem), qPrintable(problem.text));
-    // What the window does next: the table becomes the baseline it re-read.
-    model.setTable(document.baseline());
-    QVERIFY(document.pendingEdits().isEmpty());
-    QCOMPARE(int(document.baseline().size()), mirrored);
-
-    // The mirrored rows are ordinary rows in the workbook now, and a second
-    // overwrite patches them rather than appending them again.
-    QVERIFY2(document.overwriteWorkbook(&problem), qPrintable(problem.text));
     const HardpointLoadResult reread = readHardpointsXlsx(document.workbookPath());
     QVERIFY2(reread.ok(), qPrintable(reread.error));
-    QCOMPARE(int(reread.table->size()), mirrored);
-
-    // Only the project remembers which of them are mirrors.
-    int stamped = 0;
-    for (const Hardpoint& point : document.baseline().points)
-        if (point.isMirrored()) ++stamped;
-    QCOMPARE(stamped, mirrored - imported);
+    QCOMPARE(int(reread.table->size()), imported);
+    for (const Hardpoint& point : reread.table->points)
+        QVERIFY2(!point.name.endsWith(QLatin1String("_M")), qPrintable(point.name));
+    QVERIFY(document.pendingEdits().isEmpty());
 }
 
 void TestSession::aRenameIsARemovalAndAnAddition()

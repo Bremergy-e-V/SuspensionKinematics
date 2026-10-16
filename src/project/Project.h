@@ -75,6 +75,9 @@ struct ViewState {
     /// generator to put pivots on; it is only out of the way of the suspension.
     bool chassisVisible = true;
     bool labelsVisible = true;
+    /// Whether the mirrored side -- the ghosts, never listed or written -- is
+    /// drawn. Hidden it is still solved; it is only out of the way.
+    bool mirroredSideVisible = true;
     /// Whether the parts the linkage template describes are drawn between the
     /// markers. On by default: a table of points with nothing joining them is
     /// hard to read as a suspension.

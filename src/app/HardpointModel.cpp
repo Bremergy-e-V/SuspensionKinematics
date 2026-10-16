@@ -82,6 +82,10 @@ bool HardpointModel::insertPoint(int row, const Hardpoint& point)
 
 void HardpointModel::removePoints(std::vector<int> rows)
 {
+    const std::size_t asked = rows.size();
+    for (std::size_t i = 0; i < asked; ++i)
+        if (rows[i] >= 0 && rows[i] < rowCount())
+            for (const int ghost : ghostsOf(rows[i])) rows.push_back(ghost);
     // Bottom up, so taking one row out never moves another still to be taken.
     std::sort(rows.begin(), rows.end(), std::greater<int>());
     rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
@@ -117,8 +121,7 @@ bool HardpointModel::renamePoint(int row, const QString& requested)
     // The name is the key, so what was stored under it moves with it: the
     // configuration, and the provenance of anything that was mirrored from it.
     if (m_config.contains(from)) m_config.insert(name, m_config.take(from));
-    for (Hardpoint& other : m_table.points)
-        if (other.mirrorOf == from) other.mirrorOf = name;
+    renameGhosts(from, name);
 
     emit dataChanged(index(row, IndexColumn), index(row, ColumnCount - 1));
     emit pointRenamed(row, from, name);
@@ -500,16 +503,51 @@ QList<int> HardpointModel::rigidPartners(int row) const
     return partners;
 }
 
-void HardpointModel::setMirrorAxis(MirrorAxis axis)
+void HardpointModel::setMirrorSpec(const MirrorSpec& spec)
 {
-    m_mirrorAxis = axis;
+    m_mirror = spec;
+}
+
+bool HardpointModel::completeMirrors()
+{
+    bool changed = false;
+    for (int row = 0; row < rowCount(); ++row) {
+        if (!isGhost(row)) continue;
+        const Hardpoint& ghost = m_table.points[static_cast<std::size_t>(row)];
+        const Hardpoint source = *m_table.find(ghost.mirrorOf);
+        const Hardpoint reflected = reflectedPoint(source, m_mirror.axis);
+        if (std::equal(ghost.coord, ghost.coord + 3, reflected.coord)) continue;
+        placeGhost(row, source);
+        changed = true;
+    }
+
+    const std::vector<Hardpoint> missing = missingMirrors(m_table, m_mirror);
+    if (missing.empty()) return changed;
+    beginInsertRows(QModelIndex(), rowCount(), rowCount() + static_cast<int>(missing.size()) - 1);
+    m_table.points.insert(m_table.points.end(), missing.begin(), missing.end());
+    endInsertRows();
+    return true;
+}
+
+void HardpointModel::renameGhosts(const QString& from, const QString& to)
+{
+    const QString oldFarName = mirroredName(from, m_mirror);
+    const QString newFarName = mirroredName(to, m_mirror);
+    for (int row = 0; row < rowCount(); ++row) {
+        Hardpoint& ghost = m_table.points[static_cast<std::size_t>(row)];
+        if (ghost.mirrorOf != from) continue;
+        ghost.mirrorOf = to;
+        const bool namedByRule = !oldFarName.isEmpty() && ghost.name == oldFarName;
+        if (!namedByRule || !hardpointNameProblem(newFarName, m_table, row).isEmpty()) continue;
+        if (m_config.contains(ghost.name)) m_config.insert(newFarName, m_config.take(ghost.name));
+        ghost.name = newFarName;
+        emit dataChanged(index(row, NameColumn), index(row, NameColumn));
+    }
 }
 
 bool HardpointModel::isGhost(int row) const
 {
-    if (row < 0 || row >= rowCount()) return false;
-    const Hardpoint& point = m_table.points[static_cast<std::size_t>(row)];
-    return point.isMirrored() && m_table.indexOf(point.mirrorOf) >= 0;
+    return isGhostAt(m_table, row);
 }
 
 std::vector<bool> HardpointModel::ghostFlags() const
@@ -544,18 +582,18 @@ void HardpointModel::updateGhostsOf(int row)
 {
     QList<int> sources = rigidPartners(row);
     sources.prepend(row);
-    const int flipped = m_mirrorAxis == MirrorAxis::X ? 0 : (m_mirrorAxis == MirrorAxis::Y ? 1 : 2);
-    for (const int source : std::as_const(sources)) {
-        const Hardpoint& from = m_table.points[static_cast<std::size_t>(source)];
-        for (const int ghost : ghostsOf(source)) {
-            Hardpoint& to = m_table.points[static_cast<std::size_t>(ghost)];
-            // Exactly the reflection: the two coordinates the mirror does not
-            // touch are the source's own doubles, the third its negation.
-            for (int k = 0; k < 3; ++k) to.coord[k] = k == flipped ? -from.coord[k] : from.coord[k];
-            emit dataChanged(index(ghost, XColumn), index(ghost, ZColumn),
-                             { Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole });
-        }
-    }
+    for (const int source : std::as_const(sources))
+        for (const int ghost : ghostsOf(source))
+            placeGhost(ghost, m_table.points[static_cast<std::size_t>(source)]);
+}
+
+void HardpointModel::placeGhost(int ghost, const Hardpoint& source)
+{
+    Hardpoint& to = m_table.points[static_cast<std::size_t>(ghost)];
+    const Hardpoint reflected = reflectedPoint(source, m_mirror.axis);
+    std::copy(reflected.coord, reflected.coord + 3, to.coord);
+    emit dataChanged(index(ghost, XColumn), index(ghost, ZColumn),
+                     { Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole });
 }
 
 void HardpointModel::rejectGhostEdit(int row)

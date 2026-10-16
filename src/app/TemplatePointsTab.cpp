@@ -115,20 +115,10 @@ void TemplatePointsTab::removeSelectedPoints()
 {
     HardpointModel* model = m_draft->model();
     std::vector<int> rows;
-    QStringList names;
-    for (const QModelIndex& index : m_view->selectionModel()->selectedRows()) {
-        const int row = m_proxy->mapToSource(index).row();
-        rows.push_back(row);
-        names << model->table().points[std::size_t(row)].name;
-    }
-    // A mirror image of a point that is going is going too: on its own it
-    // would turn into an ordinary point on the far side that nobody asked for.
-    for (int row = 0; row < model->rowCount(); ++row)
-        if (model->isGhost(row) && names.contains(model->table().points[std::size_t(row)].mirrorOf))
-            rows.push_back(row);
+    for (const QModelIndex& index : m_view->selectionModel()->selectedRows())
+        rows.push_back(m_proxy->mapToSource(index).row());
+    // The model takes each point's mirror image with it.
     if (rows.empty()) return;
-    std::sort(rows.begin(), rows.end());
-    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
     model->removePoints(rows);
 }
 

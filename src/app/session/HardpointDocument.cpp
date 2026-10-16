@@ -3,6 +3,7 @@
 #include "app/session/ProjectSession.h"
 #include "io/LinkageTemplate.h"
 #include "model/HardpointConfig.h"
+#include "model/HardpointMirror.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -49,7 +50,9 @@ QString HardpointDocument::editsPath() const
 HardpointEdits HardpointDocument::pendingEdits() const
 {
     if (m_session.project().hardpoints().isEmpty()) return {};
-    return diffHardpoints(m_baseline, m_model.table());
+    // The far side is worked out from the near side, never kept: a ghost is
+    // neither an edit nor something to write.
+    return diffHardpoints(withoutGhosts(m_baseline), withoutGhosts(m_model.table()));
 }
 
 bool HardpointDocument::writePendingEdits(QString* error) const
@@ -165,7 +168,9 @@ std::optional<HardpointImport> HardpointDocument::import(const QString& path,
 bool HardpointDocument::writeTo(const QString& path, SessionMessage* problem) const
 {
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    const QString error = writeHardpointsXlsx(path, m_model.table(), m_source);
+    // Without the ghosts: the workbook holds one side, and a ghost row it
+    // already had from an older build is emptied like any point that went.
+    const QString error = writeHardpointsXlsx(path, withoutGhosts(m_model.table()), m_source);
     QGuiApplication::restoreOverrideCursor();
 
     if (!error.isEmpty()) {
@@ -212,7 +217,8 @@ bool HardpointDocument::adoptNewWorkbook(const HardpointTable& table, SessionMes
 {
     Project& project = m_session.project();
     QString error;
-    const std::optional<AssetRef> asset = project.createHardpointWorkbook(table, &error);
+    const std::optional<AssetRef> asset =
+        project.createHardpointWorkbook(withoutGhosts(table), &error);
     if (!asset) {
         *problem = { tr("Cannot make a workbook"),
                      tr("The points could not be written into a workbook inside the "
@@ -272,6 +278,12 @@ void HardpointDocument::applyMirrorProvenance(HardpointTable& table) const
     const QHash<QString, QString>& mirrored = m_session.project().hardpoints().mirrored;
     for (Hardpoint& point : table.points)
         point.mirrorOf = mirrored.value(point.name);
+}
+
+void HardpointDocument::completeMirrors()
+{
+    m_model.setMirrorSpec(m_session.project().mirror());
+    if (m_model.completeMirrors()) captureMirrorProvenance();
 }
 
 void HardpointDocument::captureMirrorProvenance()

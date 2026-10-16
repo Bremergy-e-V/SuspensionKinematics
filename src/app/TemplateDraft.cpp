@@ -15,7 +15,7 @@ TemplateDraft::TemplateDraft(const LinkageTemplate& templ, const HardpointTable&
                              QObject* parent)
     : QObject(parent), m_template(templ), m_model(this), m_mirror(mirror)
 {
-    m_model.setMirrorAxis(mirror.axis);
+    m_model.setMirrorSpec(mirror);
     m_model.setTable(table);
     m_model.setConfig(config);
     refreshCatalog();

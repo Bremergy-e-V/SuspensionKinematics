@@ -434,6 +434,7 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
             : DisplayMode::Solid;
     project.m_view.chassisVisible = view.value(QStringLiteral("chassis")).toBool(true);
     project.m_view.labelsVisible = view.value(QStringLiteral("labels")).toBool(true);
+    project.m_view.mirroredSideVisible = view.value(QStringLiteral("mirroredSide")).toBool(true);
     project.m_view.linksVisible = view.value(QStringLiteral("links")).toBool(true);
     project.m_view.templateEditorTab = view.value(QStringLiteral("templateEditorTab")).toInt(0);
     project.m_view.templateEditorFarSide =
@@ -579,6 +580,7 @@ bool Project::save(QString* error) const
                                                    : QStringLiteral("solid"));
     view.insert(QStringLiteral("chassis"), m_view.chassisVisible);
     view.insert(QStringLiteral("labels"), m_view.labelsVisible);
+    view.insert(QStringLiteral("mirroredSide"), m_view.mirroredSideVisible);
     view.insert(QStringLiteral("links"), m_view.linksVisible);
     view.insert(QStringLiteral("templateEditorTab"), m_view.templateEditorTab);
     view.insert(QStringLiteral("templateEditorFarSide"), m_view.templateEditorFarSide);

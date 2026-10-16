@@ -301,8 +301,6 @@ qt_add_executable(suspkin
     src/app/HardpointPanel.cpp
     src/app/ProjectLauncher.h
     src/app/ProjectLauncher.cpp
-    src/app/MirrorDialog.h
-    src/app/MirrorDialog.cpp
     # Points and parts made here rather than imported: a new point, the
     # generator's targets and preview, and a part through the selection.
     src/app/PointDialog.h
