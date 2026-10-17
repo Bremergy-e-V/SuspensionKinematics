@@ -655,6 +655,14 @@ as `:/templates/...` so the tests read the same bytes the application ships.
   it was. `setTemplatePart()` and `setTemplateMechanism()` patch the file the way
   the other edits do; an empty mechanism is written as `{}`, because no block at
   all reads back as the built-in one assumed.
+- A chain may say `"corners": ["F"]`: it is drawn on those axles only (the
+  Graphics tab's Axles column). One template draws every axle, and a car with a
+  rocker at the rear and a strut at the front needs a line -- the pushrod
+  straight to the damper -- that the other axle must not draw.
+  `cornerPointNames()` honours it too, so the solve sees what is drawn.
+- **A gap in a chain is not bridged.** A point the table lacks splits the chain
+  there (`drawableRuns()`); a closed one keeps its wrap-around run as one line.
+  Joining the neighbours drew members that do not exist.
 - A part with `"perCorner": false` names its points literally and is drawn
   exactly once -- no `{corner}`, no mirror. That is what Linkage > New Part from
   Selection writes. It belongs to no corner, so the silence above does not cover

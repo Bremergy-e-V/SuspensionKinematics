@@ -98,10 +98,12 @@ QStringList cornerPointNames(const LinkageTemplate& templ, const QString& corner
 
     for (const PartTemplate& part : templ.parts) {
         if (!part.perCorner) continue;
-        for (const ChainTemplate& chain : part.chains)
+        for (const ChainTemplate& chain : part.chains) {
+            if (!chain.drawsOn(cornerToken)) continue;
             for (const QString& pattern : chain.points)
                 take(resolvePointName(pattern, cornerToken, mirrored, mirror,
                                       templ.mechanism.formerNames, table));
+        }
     }
     const MechanismTemplate named =
         instantiateMechanism(templ.mechanism, cornerToken, mirrored, mirror, table);

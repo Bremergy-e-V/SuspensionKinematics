@@ -17,7 +17,7 @@
 namespace suspkin {
 namespace {
 
-enum Column { PartColumn, StyleColumn, ClosedColumn, FirstPointColumn };
+enum Column { PartColumn, AxlesColumn, StyleColumn, ClosedColumn, FirstPointColumn };
 
 /// As many points as Lotus gives a graphic, or as the longest chain needs.
 constexpr int kMinPointColumns = 4;
@@ -31,7 +31,9 @@ TemplateGraphicsTab::TemplateGraphicsTab(TemplateDraft* draft, QWidget* parent)
         tr("What is drawn: lines through points, each belonging to a part, whose colour it "
            "takes. A <b>pivot</b> is drawn even between two chassis points, where a plain line "
            "is left out because nothing is there. <b>Closed</b> joins the last point back to the "
-           "first. Names with {corner} draw on every axle; the far side is drawn by mirroring."),
+           "first. Names with {corner} draw on every axle <b>Axles</b> allows -- a line only the front "
+           "or only the rear has, such as a pushrod that meets the damper where the other axle has "
+           "a rocker; the far side is drawn by mirroring."),
         this);
     intro->setWordWrap(true);
 
@@ -81,10 +83,11 @@ void TemplateGraphicsTab::rebuild()
     m_table->clear();
     m_table->setRowCount(0);
     m_table->setColumnCount(FirstPointColumn + pointColumns());
-    QStringList headers = { tr("Part"), tr("Graphic"), tr("Closed") };
+    QStringList headers = { tr("Part"), tr("Axles"), tr("Graphic"), tr("Closed") };
     for (int i = 0; i < pointColumns(); ++i) headers << tr("Point %1").arg(i + 1);
     m_table->setHorizontalHeaderLabels(headers);
     m_table->setColumnWidth(PartColumn, 190);
+    m_table->setColumnWidth(AxlesColumn, 110);
     m_table->setColumnWidth(StyleColumn, 90);
     m_table->setColumnWidth(ClosedColumn, 60);
     for (int i = 0; i < pointColumns(); ++i) m_table->setColumnWidth(FirstPointColumn + i, 190);
@@ -106,6 +109,10 @@ void TemplateGraphicsTab::fillRow(int index)
     part->setCurrentIndex(row.part);
     m_table->setCellWidget(index, PartColumn, part);
     connect(part, &QComboBox::currentIndexChanged, this, changed);
+
+    m_table->setCellWidget(index, AxlesColumn, axlesBox(row.chain.corners));
+    connect(qobject_cast<QComboBox*>(m_table->cellWidget(index, AxlesColumn)),
+            &QComboBox::currentIndexChanged, this, changed);
 
     auto* style = new QComboBox(m_table);
     style->addItem(tr("Line"));
@@ -132,11 +139,33 @@ void TemplateGraphicsTab::fillRow(int index)
     }
 }
 
+QComboBox* TemplateGraphicsTab::axlesBox(const QStringList& corners)
+{
+    auto* box = new QComboBox(m_table);
+    box->setToolTip(tr("Which axles this line is drawn on."));
+    box->addItem(tr("All"), QStringList());
+    for (const CornerSpec& corner : m_draft->linkageTemplate().corners)
+        box->addItem(corner.label.isEmpty() ? corner.token : corner.label,
+                     QStringList{ corner.token });
+    // A list the choices above cannot say -- two axles of three, written by
+    // hand -- is offered as itself, so opening the editor does not change it.
+    int current = box->findData(corners);
+    if (current < 0) {
+        box->addItem(corners.join(QStringLiteral(", ")), corners);
+        current = box->count() - 1;
+    }
+    box->setCurrentIndex(current);
+    return box;
+}
+
 void TemplateGraphicsTab::readRows()
 {
     for (int i = 0; i < int(m_rows.size()) && i < m_table->rowCount(); ++i) {
         Row& row = m_rows[std::size_t(i)];
         row.part = qobject_cast<QComboBox*>(m_table->cellWidget(i, PartColumn))->currentIndex();
+        row.chain.corners = qobject_cast<QComboBox*>(m_table->cellWidget(i, AxlesColumn))
+                                ->currentData()
+                                .toStringList();
         row.chain.style = qobject_cast<QComboBox*>(m_table->cellWidget(i, StyleColumn))
                                       ->currentIndex() == 1
                               ? ChainStyle::Pivot

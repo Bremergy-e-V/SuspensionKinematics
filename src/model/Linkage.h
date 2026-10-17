@@ -52,6 +52,16 @@ struct ChainTemplate {
     /// Say nothing when these points are absent -- for what a car may not have.
     bool optional = false;
     ChainStyle style = ChainStyle::Line;
+    /// The axles this chain is drawn on, by corner token; empty is every axle.
+    /// A template is written once for all of them, and a car whose front has
+    /// no rocker while its rear does needs a line on one that the other must
+    /// not draw.
+    QStringList corners;
+
+    bool drawsOn(const QString& cornerToken) const
+    {
+        return corners.isEmpty() || corners.contains(cornerToken);
+    }
 
     bool operator==(const ChainTemplate& other) const = default;
 };

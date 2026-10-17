@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 
+#include <algorithm>
 #include <utility>
 
 namespace suspkin {
@@ -111,6 +112,42 @@ struct Instance {
     int wanted = 0;
 };
 
+constexpr int kMissing = -1;
+
+/// What is left of a chain whose points are @p indices, some of them
+/// kMissing. A chain that lost a point is still drawn through the ones it
+/// kept -- a wishbone missing an inner pickup is more use as one leg than as
+/// nothing -- but only between neighbours: joining the points either side of
+/// a gap, or closing round it, would draw a member that is not there, such as
+/// a pushrod straight to a damper on an axle without the rocker between them.
+std::vector<ResolvedChain> drawableRuns(const std::vector<int>& indices, const ChainTemplate& chain)
+{
+    const auto gap = std::find(indices.begin(), indices.end(), kMissing);
+    if (gap == indices.end()) {
+        ResolvedChain whole{ indices, chain.closed, chain.style };
+        if (whole.segmentCount() == 0) return {};
+        return { whole };
+    }
+
+    // Closed, the run that wraps past the end goes on into the start, so the
+    // walk begins just after a gap.
+    std::vector<int> walk = indices;
+    if (chain.closed) std::rotate(walk.begin(), walk.begin() + (gap - indices.begin()) + 1, walk.end());
+
+    std::vector<ResolvedChain> runs;
+    ResolvedChain run{ {}, false, chain.style };
+    const auto finish = [&] {
+        if (run.segmentCount() > 0) runs.push_back(run);
+        run.points.clear();
+    };
+    for (const int index : walk) {
+        if (index == kMissing) finish();
+        else run.points.push_back(index);
+    }
+    finish();
+    return runs;
+}
+
 Instance instantiatePart(const PartTemplate& source, const HardpointTable& table,
                          const CornerSpec& corner, bool mirrored, const MirrorSpec& mirror,
                          const FormerNames& formerNames, const QString& sideLabel)
@@ -135,35 +172,28 @@ Instance instantiatePart(const PartTemplate& source, const HardpointTable& table
     instance.part.mirrored = mirrored;
 
     for (const ChainTemplate& chain : source.chains) {
-        ResolvedChain resolved;
-        resolved.closed = chain.closed;
-        resolved.style = chain.style;
-        bool complete = true;
-
+        if (!literal && !chain.drawsOn(corner.token)) continue;
+        std::vector<int> indices; // kMissing where the table has no such point
         for (const QString& pattern : chain.points) {
             ++instance.wanted;
             const QString name =
                 literal ? pattern
                         : resolvePointName(pattern, corner.token, mirrored, mirror, formerNames,
                                            table);
-            const int index = name.isEmpty() ? -1 : table.indexOf(name);
-            if (index < 0) {
-                complete = false;
-                // An empty name means the mirror rule does not apply, which is
-                // worth saying with the pattern it came from rather than blank.
-                if (!chain.optional && !source.optional)
-                    instance.missing.append(name.isEmpty() ? pattern : name);
+            const int index = name.isEmpty() ? kMissing : table.indexOf(name);
+            indices.push_back(index < 0 ? kMissing : index);
+            if (index >= 0) {
+                ++instance.found;
                 continue;
             }
-            ++instance.found;
-            resolved.points.push_back(index);
+            // An empty name means the mirror rule does not apply, which is
+            // worth saying with the pattern it came from rather than blank.
+            if (!chain.optional && !source.optional)
+                instance.missing.append(name.isEmpty() ? pattern : name);
         }
 
-        // A chain that lost a point is still drawn through the ones it kept: a
-        // wishbone missing an inner pickup is more use as one leg than as
-        // nothing. Closing it, though, would invent an edge that is not there.
-        if (!complete) resolved.closed = false;
-        if (resolved.segmentCount() > 0) instance.part.chains.push_back(std::move(resolved));
+        for (ResolvedChain& resolved : drawableRuns(indices, chain))
+            instance.part.chains.push_back(std::move(resolved));
     }
 
     return instance;

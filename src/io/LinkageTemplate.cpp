@@ -41,6 +41,7 @@ std::optional<ChainTemplate> chainFromJson(const QJsonObject& object)
     chain.closed = object.value(QStringLiteral("closed")).toBool(false);
     chain.optional = object.value(QStringLiteral("optional")).toBool(false);
     chain.style = chainStyleFromString(object.value(QStringLiteral("style")).toString());
+    chain.corners = stringList(object.value(QStringLiteral("corners")));
     if (chain.points.size() < 2) return std::nullopt;
     return chain;
 }
@@ -55,6 +56,11 @@ QJsonObject chainToJson(const ChainTemplate& chain)
     if (chain.optional) object.insert(QStringLiteral("optional"), true);
     if (chain.style != ChainStyle::Line)
         object.insert(QStringLiteral("style"), chainStyleToString(chain.style));
+    if (!chain.corners.isEmpty()) {
+        QJsonArray corners;
+        for (const QString& token : chain.corners) corners.append(token);
+        object.insert(QStringLiteral("corners"), corners);
+    }
     return object;
 }
 
@@ -836,11 +842,17 @@ QByteArray partText(const PartTemplate& part, const QByteArray& indent)
     const auto styleEntry = [](const ChainTemplate& chain) {
         return QByteArrayLiteral("\"style\": ") + encodeString(chainStyleToString(chain.style));
     };
+    const auto cornersEntry = [](const ChainTemplate& chain) {
+        QList<QByteArray> tokens;
+        for (const QString& token : chain.corners) tokens << encodeString(token);
+        return QByteArrayLiteral("\"corners\": [") + tokens.join(", ") + QByteArrayLiteral("]");
+    };
     if (shorthand) {
         const ChainTemplate& chain = part.chains.front();
         lines << inner + QByteArrayLiteral("\"points\": ") + pointList(chain);
         if (chain.closed) lines << inner + QByteArrayLiteral("\"closed\": true");
         if (chain.style != ChainStyle::Line) lines << inner + styleEntry(chain);
+        if (!chain.corners.isEmpty()) lines << inner + cornersEntry(chain);
     } else {
         QList<QByteArray> chains;
         for (const ChainTemplate& chain : part.chains) {
@@ -848,6 +860,7 @@ QByteArray partText(const PartTemplate& part, const QByteArray& indent)
             if (chain.closed) entry += QByteArrayLiteral(", \"closed\": true");
             if (chain.optional) entry += QByteArrayLiteral(", \"optional\": true");
             if (chain.style != ChainStyle::Line) entry += QByteArrayLiteral(", ") + styleEntry(chain);
+            if (!chain.corners.isEmpty()) entry += QByteArrayLiteral(", ") + cornersEntry(chain);
             chains << inner + QByteArrayLiteral("    ") + entry + QByteArrayLiteral(" }");
         }
         lines << inner + QByteArrayLiteral("\"chains\": [\n") + chains.join(",\n") + '\n' + inner

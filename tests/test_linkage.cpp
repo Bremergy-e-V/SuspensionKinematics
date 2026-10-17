@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -115,6 +116,8 @@ private slots:
     void aPartIsReplacedWithoutDisturbingTheFile();
     void theMechanismIsReplacedWithoutDisturbingTheFile();
     void anEmptyMechanismIsWrittenAsAnEmptyBlock();
+    void aChainLimitedToOneAxleIsDrawnOnlyThere();
+    void aMissingPointInTheMiddleIsNotBridged();
 };
 
 void TestLinkage::theBuiltInTemplateIsReadable()
@@ -973,6 +976,77 @@ void TestLinkage::aPointIsReadUnderItsFormerNameOnlyWhenTheNewOneIsMissing()
     const HardpointTable neither = tableOf({ QStringLiteral("F_LCA_O") });
     QCOMPARE(resolvePointName(pattern, corner, false, mirror, former, neither),
              QStringLiteral("F_ARB_ArmRoot"));
+}
+
+
+void TestLinkage::aChainLimitedToOneAxleIsDrawnOnlyThere()
+{
+    // A front strut whose pushrod meets the damper, and a rear rocker: the
+    // line from the pushrod's outer end to the damper is the front's alone.
+    LinkageTemplate templ = builtinLinkageTemplate();
+    PartTemplate part;
+    part.id = QStringLiteral("frontStrut");
+    part.label = QStringLiteral("{corner} {side} strut");
+    part.kind = PartKind::Link;
+    ChainTemplate chain;
+    chain.points = { QStringLiteral("{corner}_PushRod_O"), QStringLiteral("{corner}_Damper_O") };
+    chain.corners = { QStringLiteral("F") };
+    part.chains.push_back(chain);
+    templ.parts.push_back(part);
+
+    QStringList names = frontCornerNames();
+    names += QStringList(frontCornerNames()).replaceInStrings(QRegularExpression(QStringLiteral("^F_")),
+                                                              QStringLiteral("R_"));
+    const Linkage linkage = buildLinkage(templ, tableOf(names), suffixMirror());
+    QVERIFY(findPart(linkage, QStringLiteral("frontStrut@F:base")));
+    QVERIFY(!findPart(linkage, QStringLiteral("frontStrut@R:base")));
+
+    // Through the file, written whole and patched in.
+    const LinkageTemplateLoadResult reread =
+        readLinkageTemplate(writeLinkageTemplate(templ), QStringLiteral("written"));
+    QVERIFY2(reread.ok(), qPrintable(reread.error));
+    QVERIFY(reread.templ->parts.back() == part);
+
+    QString error;
+    const QByteArray patched = addTemplatePart(builtinLinkageTemplateBytes(), part, &error);
+    QVERIFY2(!patched.isEmpty(), qPrintable(error));
+    QVERIFY(patched.contains("\"corners\": [\"F\"]"));
+    const LinkageTemplateLoadResult fromPatch = readLinkageTemplate(patched, QStringLiteral("patched"));
+    QVERIFY2(fromPatch.ok(), qPrintable(fromPatch.error));
+    QVERIFY(fromPatch.templ->parts.back() == part);
+}
+
+void TestLinkage::aMissingPointInTheMiddleIsNotBridged()
+{
+    // A pushrod through a rocker's pivot to a damper, on an axle without the
+    // rocker: no line from the pushrod straight to the damper.
+    LinkageTemplate straight;
+    straight.parts.push_back(PartTemplate{});
+    straight.parts.front().id = QStringLiteral("rocker");
+    straight.parts.front().chains.push_back(ChainTemplate{
+        { QStringLiteral("PushRod_I"), QStringLiteral("Rocker_Center"), QStringLiteral("Damper_O") } });
+    const Linkage noRocker = buildLinkage(
+        straight, tableOf({ QStringLiteral("PushRod_I"), QStringLiteral("Damper_O") }),
+        suffixMirror());
+    QCOMPARE(noRocker.segmentCount(), 0);
+
+    // A closed chain that lost its middle point keeps both of its other legs
+    // as one line, wrapping round the end.
+    LinkageTemplate templ;
+    templ.parts.push_back(PartTemplate{});
+    templ.parts.front().id = QStringLiteral("loop");
+    templ.parts.front().chains.push_back(ChainTemplate{
+        { QStringLiteral("A"), QStringLiteral("B"), QStringLiteral("C"), QStringLiteral("D") },
+        true });
+    const HardpointTable abd = tableOf({ QStringLiteral("A"), QStringLiteral("C"),
+                                         QStringLiteral("D") });
+    const Linkage loop = buildLinkage(templ, abd, suffixMirror());
+    QCOMPARE(loop.parts.size(), std::size_t(1));
+    QCOMPARE(loop.parts.front().chains.size(), std::size_t(1));
+    const std::vector<int> expected = { abd.indexOf(QStringLiteral("C")),
+                                        abd.indexOf(QStringLiteral("D")),
+                                        abd.indexOf(QStringLiteral("A")) };
+    QCOMPARE(loop.parts.front().chains.front().points, expected);
 }
 
 QTEST_MAIN(TestLinkage)

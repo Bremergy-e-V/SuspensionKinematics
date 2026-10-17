@@ -6,6 +6,7 @@
 
 #include <vector>
 
+class QComboBox;
 class QTableWidget;
 
 namespace suspkin {
@@ -15,7 +16,8 @@ class TemplateDraft;
 /// The template editor's fourth tab: what is drawn. One row per line drawn
 /// through points -- which part it belongs to, and so its colour, whether it
 /// is a plain line or a pivot axis, whether it closes, and the points in the
-/// order it runs through them. Names carry {corner}, so one row draws every axle.
+/// order it runs through them. Names carry {corner}, so one row draws every
+/// axle -- or the one its Axles cell names.
 class TemplateGraphicsTab : public QWidget {
     Q_OBJECT
 
@@ -32,6 +34,8 @@ private:
     void rebuild();
     void readRows();
     void fillRow(int index);
+    /// The Axles cell: every axle, or one of them.
+    QComboBox* axlesBox(const QStringList& corners);
     void commit();
     void addRow();
     void removeSelectedRow();
