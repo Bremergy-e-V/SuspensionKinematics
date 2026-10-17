@@ -1073,6 +1073,14 @@ layer they register into and `src/app/features/` is where they come from:
   library: `QTabBar`, `QStackedWidget` and buttons that paint themselves from the
   palette, the same rule as the hardpoint table. Nothing in it holds a colour of
   its own.
+- **The logo** is `resources/logo/suspkin.svg`, embedded as `:/logo/suspkin.svg`
+  and rendered per size by `appLogo()` (`src/app/AppLogo.*`) for the window
+  icon and the launcher -- not through Qt's SVG icon engine, a plugin a
+  deployment can leave out. The exe's icon (`packaging/windows/suspkin.ico`,
+  through `suspkin.rc`, and the installer's `SetupIconFile`) and the Linux
+  `suspkin.png` are the same drawing rasterised with `QSvgRenderer` and
+  committed; a change to the SVG has to be rendered into both again. XML
+  comments in it must not contain `--`, or the renderer refuses the file.
 - `--screenshot-window <png>` grabs the whole window, so the ribbon is checked
   headlessly the same way the renderer is.
 

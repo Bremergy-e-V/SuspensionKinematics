@@ -50,6 +50,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppName} {#AppVersion}
 UninstallDisplayIcon={app}\{#AppExe}
+SetupIconFile=suspkin.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

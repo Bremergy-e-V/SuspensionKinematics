@@ -4,6 +4,7 @@ Name=SuspensionKinematics
 GenericName=Suspension Kinematics Tool
 Comment=Inspect STL and STEP geometry in a 3D viewport
 Exec=suspkin %f
+Icon=suspkin
 Terminal=false
 Categories=Graphics;Engineering;Science;3DGraphics;
 MimeType=model/stl;model/step;application/vnd.ms-pki.stl;

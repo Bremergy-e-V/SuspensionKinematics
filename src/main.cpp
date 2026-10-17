@@ -1,4 +1,5 @@
 #include "app/AppController.h"
+#include "app/AppLogo.h"
 #include "app/MainWindow.h"
 
 #include <QApplication>
@@ -28,6 +29,7 @@ int main(int argc, char* argv[])
     // Between one project and the next there is a moment with no window open,
     // and Qt would take that for the end of the run.
     QApplication::setQuitOnLastWindowClosed(false);
+    QApplication::setWindowIcon(suspkin::appLogo());
 
     QCommandLineParser parser;
     parser.setApplicationDescription(

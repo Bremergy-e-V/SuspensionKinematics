@@ -246,6 +246,8 @@ endif()
 # ---------------------------------------------------------------------------
 qt_add_executable(suspkin
     src/main.cpp
+    src/app/AppLogo.h
+    src/app/AppLogo.cpp
     src/app/MainWindow.h
     src/app/MainWindow.cpp
     src/app/framework/AppContext.h
@@ -485,6 +487,18 @@ qt_add_resources(suspkin "license_icons"
     FILES "${SUSPKIN_ICONS_DIR}/LICENSE-tabler.txt"
 )
 
+# The application's logo: the drawing the window icon is rendered from. The
+# exe's own icon is the same drawing, rasterised into packaging/windows/
+# suspkin.ico (and suspkin.png for Linux) and committed beside it.
+qt_add_resources(suspkin "logo"
+    PREFIX "/logo"
+    BASE "resources/logo"
+    FILES resources/logo/suspkin.svg
+)
+if(WIN32)
+    target_sources(suspkin PRIVATE packaging/windows/suspkin.rc)
+endif()
+
 qt_add_resources(suspkin "icons"
     PREFIX "/icons"
     BASE "${SUSPKIN_ICONS_DIR}"
@@ -544,6 +558,8 @@ endif()
 if(UNIX AND NOT APPLE)
     install(FILES packaging/linux/suspkin.desktop
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    install(FILES packaging/linux/suspkin.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps)
 endif()
 
 if(WIN32)
