@@ -65,11 +65,15 @@ public:
     /// @p config, when given, is what each corner is made of: what joins what at
     /// every point (see @ref AxleSolver::build). Without it every corner is
     /// solved from the template's roles.
+    ///
+    /// @p springs, by corner token, is what each axle is sprung with; an axle
+    /// with none is solved for its kinematics alone.
     static Simulation build(const LinkageTemplate& templ, const HardpointTable& table,
                             const MirrorSpec& mirror,
                             const QHash<QString, StaticAlignment>& alignment,
                             const QString& steeringNote = QString(),
-                            const HardpointConfigMap* config = nullptr);
+                            const HardpointConfigMap* config = nullptr,
+                            const QHash<QString, AxleSprings>& springs = {});
 
     bool isEmpty() const { return m_axles.empty(); }
     const std::vector<AxleSolver>& axles() const { return m_axles; }

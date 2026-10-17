@@ -323,6 +323,13 @@ public:
         m_alignment = alignment;
     }
 
+    /// Each axle's spring, anti-roll bar and tyre rates, by corner token
+    /// (Linkage > Springs and Tyres): what the loads a sweep reads come from.
+    /// An axle that is not here is solved for its kinematics alone. Like the
+    /// static angles, a setting on the car rather than a part of it.
+    const QHash<QString, AxleSprings>& springs() const { return m_springs; }
+    void setSprings(const QHash<QString, AxleSprings>& springs) { m_springs = springs; }
+
     /// Where the file dialogs last pointed, so a project remembers the folders
     /// its owner actually imports from.
     const QString& lastGeometryDirectory() const { return m_lastGeometryDirectory; }
@@ -350,6 +357,7 @@ private:
     std::vector<RockerDesign> m_rockers;
     std::vector<PushrodDesign> m_pushrods;
     QHash<QString, StaticAlignment> m_alignment;
+    QHash<QString, AxleSprings> m_springs;
     QString m_lastGeometryDirectory;
     QString m_lastHardpointDirectory;
 };

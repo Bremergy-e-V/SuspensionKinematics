@@ -140,6 +140,10 @@ add_library(suspkin_core STATIC
     src/model/GraphSolver.cpp
     src/model/SuspensionSolver.h
     src/model/SuspensionSolver.cpp
+    # The forces the motion comes to: spring, bar and tyre rates over the
+    # solved installation ratios, by virtual work. Pure, like the solve.
+    src/model/SpringLoads.h
+    src/model/SpringLoads.cpp
     src/model/Sweep.h
     src/model/Sweep.cpp
     src/model/Simulation.h
@@ -283,6 +287,7 @@ qt_add_executable(suspkin
     src/app/features/GenerateFeature.cpp
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
+    src/app/features/SpringsFeature.cpp
     src/app/features/RockerFeature.cpp
     src/app/features/TemplateEditorFeature.cpp
     src/app/features/PushrodFeature.cpp
@@ -345,6 +350,8 @@ qt_add_executable(suspkin
     src/app/SteeringDialog.cpp
     src/app/StaticAnglesDialog.h
     src/app/StaticAnglesDialog.cpp
+    src/app/SpringsDialog.h
+    src/app/SpringsDialog.cpp
     # What the program is made of and under what terms. Help > Licenses, and
     # the only copy of those texts a portable unzip carries.
     src/app/LicensesDialog.h
@@ -433,13 +440,13 @@ qt_add_resources(suspkin "shaders"
 # list and the table in src/app/Icons.cpp are the only two places an icon is
 # named, and test_icons -- which embeds this same list -- checks they agree.
 set(SUSPKIN_ICON_NAMES
-    adjustments-horizontal angle app-window arrow-back-up arrow-forward-up braces car chart-line
+    adjustments-horizontal angle app-window arrow-back-up arrow-forward-up braces car car-crash chart-line
     chevron-down chevron-up cloud-download cube device-floppy edit file-export file-import
     file-spreadsheet file-type-csv file-x flip-horizontal focus-centered
     folder-open folder-plus folder-search forms history info-circle info-square-rounded
     layout-dashboard license line list-details logout refresh restore row-insert-bottom
     row-remove ruler-measure sphere steering-wheel table table-export table-minus table-plus
-    tag template trash triangle triangles vector wand wheel x)
+    tag template trash triangle triangles vector wand wave-sine wheel x)
 set(SUSPKIN_ICONS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons")
 set(SUSPKIN_ICONS "")
 foreach(_icon IN LISTS SUSPKIN_ICON_NAMES)

@@ -34,6 +34,7 @@ constexpr IconEntry kIcons[] = {
     { Icon::ArrowForwardUp, "arrow-forward-up" },
     { Icon::Braces, "braces" },
     { Icon::Car, "car" },
+    { Icon::CarCrash, "car-crash" },
     { Icon::ChartLine, "chart-line" },
     { Icon::ChevronDown, "chevron-down" },
     { Icon::ChevronUp, "chevron-up" },
@@ -78,6 +79,7 @@ constexpr IconEntry kIcons[] = {
     { Icon::Triangles, "triangles" },
     { Icon::Vector, "vector" },
     { Icon::Wand, "wand" },
+    { Icon::WaveSine, "wave-sine" },
     { Icon::Wheel, "wheel" },
     { Icon::X, "x" },
 };

@@ -896,6 +896,34 @@ what the car is made of, and not the workbook, which holds points.
   outboard of a wheel centre 228.6 mm up is -0.2°. That, not the solver, is what
   made the camber curves disagree with Lotus.
 
+## Springs, the bar and the tyre
+
+**Linkage > Springs and Tyres** (`src/app/SpringsDialog.*`,
+`features/SpringsFeature.cpp`) gives each axle a spring rate (N/mm, the coil on
+the damper), an anti-roll bar rate (N·m per degree of twist), a tyre rate (N/mm)
+and a static wheel load (N), stored in the manifest under `springs` by corner
+token. Zero is "not given". Not in `EditState`: like the design targets, they
+are saved when the dialog is accepted.
+
+- `src/model/SpringLoads.*` (core, tested) turns the solved motion into forces
+  by **virtual work**, so nothing about the car's mass is needed: the spring
+  puts `F_spring * IR` on the wheel, the bar `k * twist * d(arm)/dx` (in
+  radians -- a degree slipped in here once made it 57 times too stiff). The
+  static load is carried as a preload set by the design installation ratio, so
+  the design position reads back exactly that load.
+- `Simulation::build()` hands each axle its rates (`AxleSolver::setSprings()`);
+  `runSweep()` and `sampleAxleAt()` then fill `AxleSample::leftLoad`/
+  `rightLoad` and `rollMoment`. The design ratio is the one the sample at input
+  0 measures, the same difference, not a probe of its own.
+- The measures: Spring force, Wheel rate (`k * IR^2`), Wheel load, Tyre
+  deflection, Ride rate (wheel rate and tyre in series), Travel incl. tyre (the
+  wheel's travel plus what the tyre gives -- how far the body comes down), and
+  Roll moment (axle-wide, positive resisting positive roll). An unsprung axle
+  offers none of them and its CSV has none of their columns.
+- `test_kinematics` holds the roll moment to `k * twist * d(twist)/d(roll)` --
+  what the bar's energy costs per degree -- and a bump's load to the wheel rate
+  plus the preload times the change in ratio.
+
 ## Comparing with Lotus
 
 Every measure was checked on 2026-09-12 against an independent solve of the

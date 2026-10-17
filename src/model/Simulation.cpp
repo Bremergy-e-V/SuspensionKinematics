@@ -99,7 +99,8 @@ QSet<QString> Simulation::solvedPoints() const
 Simulation Simulation::build(const LinkageTemplate& templ, const HardpointTable& table,
                              const MirrorSpec& mirror,
                              const QHash<QString, StaticAlignment>& alignment,
-                             const QString& steeringNote, const HardpointConfigMap* config)
+                             const QString& steeringNote, const HardpointConfigMap* config,
+                             const QHash<QString, AxleSprings>& springs)
 {
     Simulation simulation;
 
@@ -141,6 +142,8 @@ Simulation Simulation::build(const LinkageTemplate& templ, const HardpointTable&
                                                : std::optional<StaticAlignment>(*stated),
                 LinkageDescription{ &templ, config });
             if (axle.isEmpty()) continue;
+            const auto sprung = springs.constFind(corner.token);
+            if (sprung != springs.constEnd() && !sprung->isEmpty()) axle.setSprings(*sprung);
             simulation.m_axles.push_back(std::move(axle));
         }
         // Ackermann is measured against the far axle, which only the whole list

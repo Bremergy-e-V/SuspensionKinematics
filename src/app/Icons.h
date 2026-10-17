@@ -22,6 +22,7 @@ enum class Icon {
     ArrowForwardUp,
     Braces,
     Car,
+    CarCrash,
     ChartLine,
     ChevronDown,
     ChevronUp,
@@ -66,6 +67,7 @@ enum class Icon {
     Triangles,
     Vector,
     Wand,
+    WaveSine,
     Wheel,
     X,
 

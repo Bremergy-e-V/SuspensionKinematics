@@ -39,7 +39,7 @@ public:
     /// corner made of what @p config says joins what.
     void bind(const LinkageTemplate& templ, const HardpointTable& table, const MirrorSpec& mirror,
               const QHash<QString, StaticAlignment>& alignment, const QString& steeringNote,
-              const HardpointConfigMap& config);
+              const HardpointConfigMap& config, const QHash<QString, AxleSprings>& springs);
     /// Run the sweeps @p request asks for, or clear them when it wants none.
     void runSweep(const SimulationRequest& request);
     /// A sweep of every axle @p request plots, whether or not it wants them

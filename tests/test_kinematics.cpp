@@ -384,6 +384,12 @@ private slots:
     void aDropLinkNeedNotHangOffARocker();
     void aDropLinkOnTheRockerNeedsARocker();
     void aWorkbookWithTheOldAntiRollNamesSolvesUnderTheNewTemplate();
+
+    // ---- springs, the bar and the tyre ----------------------------------
+    void theSpringPutsItsRateOnTheWheelThroughTheInstallationRatio();
+    void theTyreTakesUpTheLoadInSeriesWithTheSpring();
+    void theBarsRollMomentIsWhatItsTwistCostsPerDegree();
+    void anAxleWithoutSpringsHasNoLoadsToPlot();
 };
 
 void TestKinematics::rotatingAboutAnAxisKeepsTheDistanceToIt()
@@ -2163,6 +2169,144 @@ void TestKinematics::aWorkbookWithTheOldAntiRollNamesSolvesUnderTheNewTemplate()
         QVERIFY(std::abs(under.samples[i].antiRollTwist - asWritten.samples[i].antiRollTwist)
                 < 1e-9);
     }
+}
+
+namespace {
+
+AxleSolver sprungFrontAxle(const AxleSprings& springs)
+{
+    AxleSolver axle =
+        AxleSolver::build(cornerMechanism(), frontCorner(), frontAxle(), MirrorSpec{});
+    axle.setSprings(springs);
+    return axle;
+}
+
+const AxleSample& designSampleOf(const SweepResult& result)
+{
+    const AxleSample* design = result.nearest(0.0);
+    Q_ASSERT(design && std::abs(design->input) < 1e-9);
+    return *design;
+}
+
+} // namespace
+
+void TestKinematics::theSpringPutsItsRateOnTheWheelThroughTheInstallationRatio()
+{
+    AxleSprings springs;
+    springs.springRate = 30.0;
+    springs.staticLoad = 1000.0;
+    const SweepResult result = bumpSweep(sprungFrontAxle(springs));
+    QVERIFY(result.sprung);
+
+    // At design the wheel carries exactly its static load: the spring is
+    // preloaded to it.
+    const AxleSample& design = designSampleOf(result);
+    QVERIFY(design.leftLoad.valid);
+    QVERIFY(std::abs(design.leftLoad.load - 1000.0) < 1e-6);
+    QVERIFY(std::abs(design.leftLoad.loadChange) < 1e-9);
+
+    for (const AxleSample& sample : result.samples) {
+        const double ratio = sample.leftInstallationRatio;
+        QVERIFY(std::abs(sample.leftLoad.wheelRate - 30.0 * ratio * ratio) < 1e-9);
+        QVERIFY(std::abs(sample.leftLoad.barForce) < 1e-12);
+    }
+
+    // And the load a bump adds is the wheel rate over it, plus what the
+    // preload does as the ratio changes under it -- a rising rate is not only
+    // the spring's.
+    const std::size_t middle = std::size_t(&design - result.samples.data());
+    const AxleSample& bumped = result.samples[middle + 1];
+    const double travel = bumped.left.wheelTravel - design.left.wheelTravel;
+    const double preload = 1000.0 / design.leftInstallationRatio;
+    const double expected =
+        0.5 * (design.leftLoad.wheelRate + bumped.leftLoad.wheelRate) * travel
+        + preload * (bumped.leftInstallationRatio - design.leftInstallationRatio);
+    QVERIFY2(std::abs(bumped.leftLoad.loadChange - expected) < 0.03 * std::abs(expected),
+             qPrintable(QStringLiteral("%1 vs %2").arg(bumped.leftLoad.loadChange).arg(expected)));
+    QVERIFY(bumped.leftLoad.loadChange > 0.0);
+}
+
+void TestKinematics::theTyreTakesUpTheLoadInSeriesWithTheSpring()
+{
+    AxleSprings springs;
+    springs.springRate = 30.0;
+    springs.tyreRate = 200.0;
+    springs.staticLoad = 1000.0;
+    const SweepResult result = bumpSweep(sprungFrontAxle(springs));
+
+    const AxleSample& design = designSampleOf(result);
+    QVERIFY(std::abs(design.leftLoad.tyreDeflection - 5.0) < 1e-6);
+    QVERIFY(std::abs(design.leftLoad.travelWithTyre) < 1e-6);
+
+    for (const AxleSample& sample : result.samples) {
+        const WheelLoad& load = sample.leftLoad;
+        QVERIFY(load.tyreValid);
+        QVERIFY(std::abs(load.tyreDeflection - load.load / 200.0) < 1e-9);
+        QVERIFY(std::abs(load.travelWithTyre
+                         - (sample.left.wheelTravel + load.loadChange / 200.0))
+                < 1e-9);
+        const double series = load.wheelRate * 200.0 / (load.wheelRate + 200.0);
+        QVERIFY(std::abs(load.rideRate - series) < 1e-9);
+        // In bump the tyre squashes as well, so the body comes down further
+        // than the wheel moves in its travel.
+        if (sample.left.wheelTravel > 1.0) QVERIFY(load.travelWithTyre > sample.left.wheelTravel);
+    }
+
+    double value = 0.0;
+    QVERIFY(sweepMeasureValue(design, SweepMeasure::TyreDeflection, true, &value));
+    QVERIFY(sweepMeasureAvailable(result, SweepMeasure::RideRate));
+}
+
+void TestKinematics::theBarsRollMomentIsWhatItsTwistCostsPerDegree()
+{
+    AxleSprings springs;
+    springs.antiRollRate = 100.0; // N·m per degree of twist
+    const SweepResult result = rollSweep(sprungFrontAxle(springs));
+    QVERIFY(result.sprung);
+
+    // M = dU/d(phi) for U = k theta^2 / 2, with every angle in degrees: the
+    // roll moment the wheel loads make about the centreline is what the bar's
+    // twist costs per degree of roll.
+    for (std::size_t i = 1; i + 1 < result.samples.size(); ++i) {
+        const AxleSample& sample = result.samples[i];
+        QVERIFY(sample.hasAntiRoll);
+        QVERIFY(sample.rollMomentValid);
+        const AxleSample& before = result.samples[i - 1];
+        const AxleSample& after = result.samples[i + 1];
+        const double twistRate =
+            (after.antiRollTwist - before.antiRollTwist) / (after.input - before.input);
+        const double expected = springs.antiRollRate * sample.antiRollTwist * twistRate;
+        if (std::abs(sample.input) < 1e-9) {
+            QVERIFY(std::abs(sample.rollMoment) < 1e-6);
+            continue;
+        }
+        QVERIFY2(std::abs(sample.rollMoment - expected) < 0.03 * std::abs(expected),
+                 qPrintable(QStringLiteral("at %1: %2 vs %3")
+                                .arg(sample.input)
+                                .arg(sample.rollMoment)
+                                .arg(expected)));
+        // It resists the roll.
+        QVERIFY(sample.rollMoment * sample.input > 0.0);
+    }
+}
+
+void TestKinematics::anAxleWithoutSpringsHasNoLoadsToPlot()
+{
+    const AxleSolver axle =
+        AxleSolver::build(cornerMechanism(), frontCorner(), frontAxle(), MirrorSpec{});
+    const SweepResult result = bumpSweep(axle);
+    QVERIFY(!result.sprung);
+    for (const SweepMeasure measure :
+         { SweepMeasure::SpringForce, SweepMeasure::WheelRate, SweepMeasure::WheelLoad,
+           SweepMeasure::TyreDeflection, SweepMeasure::RideRate, SweepMeasure::TravelWithTyre,
+           SweepMeasure::RollMoment })
+        QVERIFY(!sweepMeasureAvailable(result, measure));
+    // The CSV of an unsprung axle is what it always was.
+    QVERIFY(!sweepToCsv(result).contains("wheel_load"));
+
+    AxleSprings springs;
+    springs.springRate = 30.0;
+    QVERIFY(sweepToCsv(bumpSweep(sprungFrontAxle(springs))).contains("wheel_load_left [N]"));
 }
 
 QTEST_MAIN(TestKinematics)

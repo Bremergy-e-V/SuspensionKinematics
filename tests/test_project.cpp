@@ -49,6 +49,7 @@ private slots:
     void anOlderProjectsSingleRangeBecomesThatKindsOwnTravel();
     void aProjectWithAPlotPerCurveOpensOnItsFirstCurveAndItsAxle();
     void staticAnglesAreKeptPerAxle();
+    void springRatesAreKeptPerAxle();
 
     void editsAreTheDifferenceFromTheWorkbook();
     void editsRoundTripThroughTheirFile();
@@ -859,6 +860,26 @@ void TestProject::aProjectWithAPlotPerCurveOpensOnItsFirstCurveAndItsAxle()
     QCOMPARE(saved.value(QStringLiteral("measure")).toString(), QStringLiteral("toe"));
     QCOMPARE(saved.value(QStringLiteral("measures")).toArray(), QJsonArray{ QStringLiteral("toe") });
     QCOMPARE(saved.value(QStringLiteral("plotAxles")).toArray(), QJsonArray{ QStringLiteral("R") });
+}
+
+void TestProject::springRatesAreKeptPerAxle()
+{
+    QTemporaryDir directory;
+    QString error;
+    std::optional<Project> project =
+        Project::create(directory.filePath(QStringLiteral("A")), QStringLiteral("A"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY(project->springs().isEmpty());
+
+    QHash<QString, AxleSprings> springs;
+    springs.insert(QStringLiteral("F"), AxleSprings{ 35.5, 120.0, 180.0, 650.0 });
+    project->setSprings(springs);
+    QVERIFY2(project->save(&error), qPrintable(error));
+
+    std::optional<Project> reopened = Project::open(project->manifestPath(), &error);
+    QVERIFY2(reopened.has_value(), qPrintable(error));
+    QCOMPARE(reopened->springs().size(), 1);
+    QVERIFY(reopened->springs().value(QStringLiteral("F")) == springs.value(QStringLiteral("F")));
 }
 
 void TestProject::staticAnglesAreKeptPerAxle()

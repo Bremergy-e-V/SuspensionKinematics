@@ -287,7 +287,7 @@ void TestSession::aTemplateWithoutAMechanismIsReadWithTheBuiltinOne()
 void TestSession::theSweepIsSkippedWhenNotWantedButThePoseIsNot()
 {
     SimulationRunner runner;
-    runner.bind(frontAxleTemplate(), frontAxle(), MirrorSpec{}, {}, QString(), {});
+    runner.bind(frontAxleTemplate(), frontAxle(), MirrorSpec{}, {}, QString(), {}, {});
     QVERIFY(!runner.simulation().isEmpty());
 
     SimulationRequest request = bumpAt(10.0);

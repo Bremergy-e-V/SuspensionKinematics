@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/Linkage.h"
+#include "model/SpringLoads.h"
 #include "model/SuspensionSolver.h"
 
 #include <QByteArray>
@@ -100,6 +101,11 @@ public:
     /// the front view.
     std::optional<Vec3> designRollCentre() const;
 
+    /// What the axle is sprung with, for the loads a sweep reads off it.
+    /// Nothing is the kinematics alone.
+    const std::optional<AxleSprings>& springs() const { return m_springs; }
+    void setSprings(const std::optional<AxleSprings>& springs) { m_springs = springs; }
+
 private:
     QString m_token;
     QString m_label;
@@ -107,6 +113,7 @@ private:
     std::optional<CornerSolver> m_right;
     QStringList m_warnings;
     double m_wheelbase = 0.0;
+    std::optional<AxleSprings> m_springs;
 };
 
 /// Give each axle the distance to the axle farthest from it, measured between
@@ -265,6 +272,19 @@ struct AxleSample {
     double antiRollTwist = 0.0;
     bool hasAntiRoll = false;
 
+    /// Degrees the bar's arm turns per millimetre of that side's wheel travel,
+    /// the bar's own installation ratio: what turns its twist into a force.
+    double leftBarRatio = 0.0;
+    double rightBarRatio = 0.0;
+
+    /// The forces at each wheel, when the axle has springs
+    /// (@ref AxleSolver::springs), and the moment they make about the
+    /// centreline, which is what resists a roll.
+    WheelLoad leftLoad;
+    WheelLoad rightLoad;
+    double rollMoment = 0.0;
+    bool rollMomentValid = false;
+
     /// Percent Ackermann (@ref ackermannPercent), read off a steer sweep only.
     /// Each wheel's steer angle is its toe change from rack centre, so static toe
     /// -- a setting, not the geometry -- stays out of it; the track is between
@@ -283,6 +303,8 @@ struct SweepResult {
     QString axleLabel;
     std::vector<AxleSample> samples;
     QStringList warnings;
+    /// The axle had springs, so its samples carry loads -- and its CSV their columns.
+    bool sprung = false;
 
     bool isEmpty() const { return samples.empty(); }
     /// The sample nearest @p input, or nothing when there are none.
@@ -327,6 +349,13 @@ enum class SweepMeasure {
     RollCentreLateral,
     AntiRollTwist,
     Ackermann,
+    SpringForce,
+    WheelRate,
+    WheelLoad,
+    TyreDeflection,
+    RideRate,
+    TravelWithTyre,
+    RollMoment,
 };
 
 /// Every measure, in the order they belong in a menu: the wheel first, then the
@@ -341,7 +370,8 @@ QString sweepMeasureKey(SweepMeasure measure);
 SweepMeasure sweepMeasureFromKey(const QString& key, SweepMeasure fallback = SweepMeasure::Camber);
 
 /// False for the ones that belong to the axle rather than to a wheel -- the roll
-/// centre, the bar's twist and Ackermann -- which are drawn as one curve, not two.
+/// centre, the bar's twist, Ackermann and the roll moment -- which are drawn as
+/// one curve, not two.
 bool sweepMeasureIsPerSide(SweepMeasure measure);
 
 /// Which wheels a plot draws, for a measure that has one curve per wheel.
