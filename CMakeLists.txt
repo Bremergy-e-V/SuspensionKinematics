@@ -148,6 +148,10 @@ add_library(suspkin_core STATIC
     src/model/Sweep.cpp
     src/model/Simulation.h
     src/model/Simulation.cpp
+    # How close the members come to each other and to the chassis over a
+    # travel: capsules and a mesh, so tested without a window.
+    src/model/Collision.h
+    src/model/Collision.cpp
     # The other direction: from vehicle targets to hardpoints. Trigonometry over
     # a few dozen numbers, ported from the team's Python geometry editor, and
     # checked by feeding what it makes back through the solver above.
@@ -290,6 +294,7 @@ qt_add_executable(suspkin
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
     src/app/features/SpringsFeature.cpp
+    src/app/features/CollisionFeature.cpp
     src/app/features/RockerFeature.cpp
     src/app/features/TemplateEditorFeature.cpp
     src/app/features/PushrodFeature.cpp
@@ -354,6 +359,8 @@ qt_add_executable(suspkin
     src/app/StaticAnglesDialog.cpp
     src/app/SpringsDialog.h
     src/app/SpringsDialog.cpp
+    src/app/CollisionDialog.h
+    src/app/CollisionDialog.cpp
     # What the program is made of and under what terms. Help > Licenses, and
     # the only copy of those texts a portable unzip carries.
     src/app/LicensesDialog.h

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "model/Collision.h"
 #include "model/DesignParameters.h"
 #include "model/Hardpoint.h"
 #include "model/HardpointConfig.h"
@@ -330,6 +331,10 @@ public:
     const QHash<QString, AxleSprings>& springs() const { return m_springs; }
     void setSprings(const QHash<QString, AxleSprings>& springs) { m_springs = springs; }
 
+    /// How Analysis > Collision Check sees the members and what it calls tight.
+    const CollisionSettings& collision() const { return m_collision; }
+    void setCollision(const CollisionSettings& collision) { m_collision = collision; }
+
     /// Where the file dialogs last pointed, so a project remembers the folders
     /// its owner actually imports from.
     const QString& lastGeometryDirectory() const { return m_lastGeometryDirectory; }
@@ -358,6 +363,7 @@ private:
     std::vector<PushrodDesign> m_pushrods;
     QHash<QString, StaticAlignment> m_alignment;
     QHash<QString, AxleSprings> m_springs;
+    CollisionSettings m_collision;
     QString m_lastGeometryDirectory;
     QString m_lastHardpointDirectory;
 };

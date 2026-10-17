@@ -514,6 +514,8 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
     }
 
     project.m_springs = axleSpringsFromJson(root.value(QStringLiteral("springs")).toObject());
+    project.m_collision =
+        collisionSettingsFromJson(root.value(QStringLiteral("collision")).toObject());
 
     const QJsonObject directories = root.value(QStringLiteral("directories")).toObject();
     project.m_lastGeometryDirectory = directories.value(QStringLiteral("geometry")).toString();
@@ -645,6 +647,8 @@ bool Project::save(QString* error) const
         root.insert(QStringLiteral("alignment"), alignment);
     }
     if (!m_springs.isEmpty()) root.insert(QStringLiteral("springs"), axleSpringsToJson(m_springs));
+    if (m_collision != CollisionSettings{})
+        root.insert(QStringLiteral("collision"), collisionSettingsToJson(m_collision));
 
     QJsonObject directories;
     directories.insert(QStringLiteral("geometry"), m_lastGeometryDirectory);

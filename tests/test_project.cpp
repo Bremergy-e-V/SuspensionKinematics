@@ -880,6 +880,12 @@ void TestProject::springRatesAreKeptPerAxle()
     QVERIFY2(reopened.has_value(), qPrintable(error));
     QCOMPARE(reopened->springs().size(), 1);
     QVERIFY(reopened->springs().value(QStringLiteral("F")) == springs.value(QStringLiteral("F")));
+    QVERIFY(reopened->collision() == CollisionSettings{});
+
+    const CollisionSettings collision{ 12.0, 4.0, 40.0, false };
+    reopened->setCollision(collision);
+    QVERIFY2(reopened->save(&error), qPrintable(error));
+    QVERIFY(Project::open(project->manifestPath(), &error)->collision() == collision);
 }
 
 void TestProject::staticAnglesAreKeptPerAxle()

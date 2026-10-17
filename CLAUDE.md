@@ -924,6 +924,31 @@ are saved when the dialog is accepted.
   what the bar's energy costs per degree -- and a bump's load to the wheel rate
   plus the preload times the change in ratio.
 
+## Collision check
+
+**Analysis > Collision Check** (`src/app/CollisionDialog.*`,
+`features/CollisionFeature.cpp`) walks the analysis panel's current sweep --
+every axle moving, the body left where the chassis mesh is -- and lists how
+close each two parts come, and each part to the chassis, closest first.
+`src/model/Collision.*` (core, `test_collision`) does it on tables, so it needs
+no window.
+
+- Every member is a capsule of `memberRadius` round the line drawn for it. A
+  line between two chassis points and a wheel's construction lines are not
+  members.
+- **Parts joined at a point are not compared** -- including through two rows
+  that are one place at design, a strut's pushrod end and damper eye. Two parts
+  that each meet a third *are* compared, but not within `jointClearance` of that
+  third part's points: that is how a tie rod is still checked against the lower
+  wishbone (both on the upright) while a pushrod picking up beside a ball joint
+  does not read as touching its wishbone.
+- Against the chassis a member is sampled along its length, away from its own
+  chassis mounts by the same clearance. The distance is unsigned, so a member
+  inside the tub reads as close; the "At design" column is what tells a static
+  closeness from one the travel causes.
+- The settings are in the manifest under `collision`, written only when they
+  differ from the defaults.
+
 ## Comparing with Lotus
 
 Every measure was checked on 2026-09-12 against an independent solve of the

@@ -54,6 +54,12 @@ add_test(NAME wheels COMMAND test_wheels)
 # The window used to hold the solve inside itself, where it could only be
 # reached through a QMainWindow. It is core now, so posing a car is checked the
 # same way every measure under it is.
+# Clearances between members and to the chassis over a travel: segment
+# geometry over a few tables, so no window is needed.
+qt_add_executable(test_collision test_collision.cpp)
+target_link_libraries(test_collision PRIVATE suspkin_core Qt6::Test)
+add_test(NAME collision COMMAND test_collision)
+
 qt_add_executable(test_simulation test_simulation.cpp)
 target_link_libraries(test_simulation PRIVATE suspkin_core Qt6::Test)
 add_test(NAME simulation COMMAND test_simulation)
