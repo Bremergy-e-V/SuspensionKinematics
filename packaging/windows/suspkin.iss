@@ -46,6 +46,8 @@ OutputBaseFilename={#OutputName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; The installer's own icon; the exe carries the same one as a resource.
+SetupIconFile=suspkin.ico
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppName} {#AppVersion}

@@ -488,6 +488,20 @@ qt_add_resources(suspkin "icons"
     FILES ${SUSPKIN_ICONS}
 )
 
+# The application's own icon, as distinct from the command icons above: what a
+# window, a taskbar and a launcher show. The sizes are committed rather than
+# made at build time, so nothing new is needed to build.
+set(SUSPKIN_APPICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/appicon")
+qt_add_resources(suspkin "appicon"
+    PREFIX "/appicon"
+    BASE "${SUSPKIN_APPICON_DIR}"
+    FILES "${SUSPKIN_APPICON_DIR}/suspkin.png"
+)
+if(WIN32)
+    # What Explorer shows for the exe itself, which no Qt call can set.
+    target_sources(suspkin PRIVATE packaging/windows/suspkin.rc)
+endif()
+
 set_target_properties(suspkin PROPERTIES WIN32_EXECUTABLE ON)
 
 # ---------------------------------------------------------------------------
@@ -541,6 +555,14 @@ endif()
 if(UNIX AND NOT APPLE)
     install(FILES packaging/linux/suspkin.desktop
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    # The launcher's icon, by the name the desktop file asks for.
+    foreach(_size 48 64 128 256)
+        install(FILES "${SUSPKIN_APPICON_DIR}/suspkin-${_size}.png"
+                DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_size}x${_size}/apps
+                RENAME suspkin.png)
+    endforeach()
+    install(FILES "${SUSPKIN_APPICON_DIR}/suspkin.png"
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512/apps)
 endif()
 
 if(WIN32)
