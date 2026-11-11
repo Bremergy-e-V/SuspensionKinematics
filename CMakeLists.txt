@@ -140,6 +140,8 @@ add_library(suspkin_core STATIC
     src/model/GraphSolver.cpp
     src/model/SuspensionSolver.h
     src/model/SuspensionSolver.cpp
+    src/model/Compliance.h
+    src/model/Compliance.cpp
     src/model/Sweep.h
     src/model/Sweep.cpp
     src/model/Simulation.h
@@ -345,6 +347,8 @@ qt_add_executable(suspkin
     src/app/SteeringDialog.cpp
     src/app/StaticAnglesDialog.h
     src/app/StaticAnglesDialog.cpp
+    src/app/SpringRatesDialog.h
+    src/app/SpringRatesDialog.cpp
     # What the program is made of and under what terms. Help > Licenses, and
     # the only copy of those texts a portable unzip carries.
     src/app/LicensesDialog.h

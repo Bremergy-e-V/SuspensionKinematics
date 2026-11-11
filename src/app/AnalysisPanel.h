@@ -111,6 +111,10 @@ public:
     bool movesAllAxles() const;
     void setMovesAllAxles(bool all);
 
+    /// Whether the tyres give way in a bump or a roll. It is part of @ref spec.
+    bool includesTyreCompliance() const;
+    void setIncludesTyreCompliance(bool included);
+
     /// The one curve on screen.
     SweepMeasure measure() const { return m_measure; }
     void setMeasure(SweepMeasure measure);

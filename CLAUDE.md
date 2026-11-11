@@ -896,6 +896,42 @@ what the car is made of, and not the workbook, which holds points.
   outboard of a wheel centre 228.6 mm up is -0.2°. That, not the solver, is what
   made the camber curves disagree with Lotus.
 
+## Springs, bar and tyres
+
+**Linkage > Springs and Tyres** states `AxleRates` per axle -- spring N/mm, bar
+Nm/deg at the bar, tyre N/mm -- stored in the manifest under `rates`, keyed by
+corner token, beside `alignment` and for the same reason. They are **not** in
+`EditState`: they move no point, so the dialog records no step.
+
+- `src/model/Compliance.*` is the whole of the physics, pure and in the core.
+  The force at a contact patch is the springs' stored energy differentiated
+  against that patch's own rise (`axleSpringing()`), so a motion ratio that
+  changes through the travel and the bar's coupling of the two sides are in it
+  without being named. The spring is taken to sit on the damper; an axle whose
+  mechanism has no damper cannot be sprung (`AxleSolver::canDeflectTyres()`).
+- **Everything is a change from the design position**, which is the car at its
+  static ride height. That is why no preload and no corner weight is asked for.
+- With rates an axle's bump and roll samples carry `AxleSample::loads` whether
+  or not the tyres give way; `SweepResult::hasLoads` is what adds the CSV
+  columns, so a sheet of an axle without rates is byte for byte what it was.
+- **`SweepSpec::tyreCompliance` changes what the input means.** It is then the
+  body against the *road*: `solveCompliantAxle()` shares the road's rise out
+  between suspension and tyre until each patch carries what its tyre's
+  deflection makes. Wheel travel is a result, and a bump's axis is labelled
+  "Body travel to road" (`sweepInputLabel()`, `SweepResult::tyresDeflect`). Off,
+  or on an axle without rates, the old path runs untouched -- the compliant one
+  is a separate walk (`walkCompliant()`), because the bar makes it solve both
+  sides of a sample together where the rigid one solves each side on its own.
+- The returned pose is the suspension's, with its contact patch moved up by the
+  deflection onto the road (`settleOnRoad()`), so the roll centre is measured
+  from where the tyre actually stands. Camber, toe, scrub and the rest are the
+  suspension's own.
+- A roll is a pure roll at fixed ride height, as it always was: the axle's two
+  load changes need not sum to zero.
+- The switch is `SimulationState::tyreCompliance`, the "Include tyre stiffness"
+  box in the sweep parameters window, and it reaches the viewport's pose through
+  `Simulation::poseAt()` as well as the sweep.
+
 ## Comparing with Lotus
 
 Every measure was checked on 2026-09-12 against an independent solve of the

@@ -1,4 +1,5 @@
 #include "app/HardpointModel.h"
+#include "app/SpringRatesDialog.h"
 #include "app/StaticAnglesDialog.h"
 #include "app/SteeringDialog.h"
 #include "app/framework/AppContext.h"
@@ -19,7 +20,8 @@ namespace {
 QString tr(const char* text) { return QCoreApplication::translate("MechanismFeature", text); }
 
 /// What the car is made of, as far as the solver is concerned: which axle has a
-/// steering rack, and the static camber and toe each axle is set to.
+/// steering rack, the static camber and toe each axle is set to, and how stiff
+/// its springs, bar and tyres are.
 ///
 /// Its buttons are on the Linkage tab, after the parts: RibbonSlot::order puts
 /// them there, whichever file they come from.
@@ -62,6 +64,21 @@ public:
             .ribbon = { { page, tr("Alignment"), RibbonButton::Large, nullptr, 50 } },
             .run = [this] { staticAnglesDialog(); },
             // Angles are set on a wheel, so there has to be an axle that solves.
+            .enabledWhen = [this] {
+                return !m_context.session().simulation().simulation().isEmpty();
+            },
+        });
+
+        commands.add({
+            .id = QStringLiteral("linkage.springRates"),
+            .text = tr("Springs and &Tyres..."),
+            .icon = Icon::AdjustmentsHorizontal,
+            .iconText = tr("Springs\nand Tyres"),
+            .statusTip = tr("State each axle's spring, anti-roll bar and tyre rates. A sweep "
+                            "then shows the forces, and can let the tyres give way."),
+            .ribbon = { { page, tr("Alignment"), RibbonButton::Large, nullptr, 60 } },
+            .run = [this] { springRatesDialog(); },
+            // A rate belongs to an axle, so there has to be one that solves.
             .enabledWhen = [this] {
                 return !m_context.session().simulation().simulation().isEmpty();
             },
@@ -128,6 +145,53 @@ private:
         // the next undo of anything.
         m_context.session().recordEdit(tr("Set static camber and toe"));
         m_context.showStatus(tr("Static camber and toe saved with the project."), 5000);
+    }
+
+    /// Let the user state each axle's spring, bar and tyre rates, and solve
+    /// again with them.
+    void springRatesDialog()
+    {
+        const std::vector<SpringRatesAxle> rows = springRatesAxles();
+        if (rows.empty()) return;
+
+        SpringRatesDialog dialog(rows, m_context.window());
+        if (dialog.exec() != QDialog::Accepted) return;
+
+        // As with the static angles: every axle shown is replaced, and one
+        // that does not solve today keeps what the project said about it.
+        Project& project = m_context.project();
+        QHash<QString, AxleRates> rates = project.rates();
+        for (const SpringRatesAxle& row : rows) rates.remove(row.token);
+        const QHash<QString, AxleRates> chosen = dialog.rates();
+        for (auto it = chosen.begin(); it != chosen.end(); ++it) rates.insert(it.key(), it.value());
+        if (rates == project.rates()) return;
+
+        // No undo step: the rates are not in the edit state, so no undo of
+        // anything else can put them back.
+        project.setRates(rates);
+        m_context.session().resolveMechanism();
+        m_context.markDirty();
+        m_context.showStatus(tr("Spring and tyre rates saved with the project."), 5000);
+    }
+
+    /// Every axle that solves, as the spring rates dialog shows it.
+    std::vector<SpringRatesAxle> springRatesAxles() const
+    {
+        std::vector<SpringRatesAxle> rows;
+        for (const AxleSolver& axle : m_context.session().simulation().simulation().axles()) {
+            const std::optional<CornerSolver>& near = axle.left() ? axle.left() : axle.right();
+            if (!near) continue;
+
+            SpringRatesAxle row;
+            row.token = axle.cornerToken();
+            row.label = axle.label().isEmpty() ? tr("Suspension") : axle.label();
+            row.stated = m_context.project().ratesFor(axle.cornerToken());
+            row.hasDamper = near->designPose().hasDamper;
+            row.hasAntiRoll = axle.hasBothSides() && axle.left()->designPose().hasAntiRoll
+                              && axle.right()->designPose().hasAntiRoll;
+            rows.push_back(row);
+        }
+        return rows;
     }
 
     /// Every axle that solves, as the static angles dialog shows it: what the

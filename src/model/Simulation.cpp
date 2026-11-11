@@ -99,7 +99,8 @@ QSet<QString> Simulation::solvedPoints() const
 Simulation Simulation::build(const LinkageTemplate& templ, const HardpointTable& table,
                              const MirrorSpec& mirror,
                              const QHash<QString, StaticAlignment>& alignment,
-                             const QString& steeringNote, const HardpointConfigMap* config)
+                             const QString& steeringNote, const HardpointConfigMap* config,
+                             const QHash<QString, AxleRates>& rates)
 {
     Simulation simulation;
 
@@ -135,11 +136,13 @@ Simulation Simulation::build(const LinkageTemplate& templ, const HardpointTable&
             // Static camber and toe the project states win over whatever the
             // table's wheel axis or contact patch would have said.
             const auto stated = alignment.constFind(corner.token);
+            const auto sprung = rates.constFind(corner.token);
             AxleSolver axle = AxleSolver::build(
                 mechanism, corner, table, mirror, steeringDeclared,
                 stated == alignment.constEnd() ? std::nullopt
                                                : std::optional<StaticAlignment>(*stated),
-                LinkageDescription{ &templ, config });
+                LinkageDescription{ &templ, config },
+                sprung == rates.constEnd() ? std::nullopt : std::optional<AxleRates>(*sprung));
             if (axle.isEmpty()) continue;
             simulation.m_axles.push_back(std::move(axle));
         }
@@ -169,13 +172,14 @@ const AxleSolver* Simulation::axleFor(const QString& token) const
 }
 
 SimulationPose Simulation::poseAt(const QString& token, SweepKind kind, double input,
-                                  double rackTravel, bool moveAllAxles) const
+                                  double rackTravel, bool moveAllAxles,
+                                  bool tyreCompliance) const
 {
     SimulationPose pose;
     const AxleSolver* selected = axleFor(token);
     if (!selected) return pose;
 
-    pose.samples.push_back(sampleAxleAt(*selected, kind, input, rackTravel));
+    pose.samples.push_back(sampleAxleAt(*selected, kind, input, rackTravel, tyreCompliance));
     bool assembled = cornersAssembled(*selected, pose.samples.back());
 
     // The other axles ride along, so the car heaves and rolls as a car rather
@@ -185,7 +189,8 @@ SimulationPose Simulation::poseAt(const QString& token, SweepKind kind, double i
     if (moveAllAxles && kind != SweepKind::Steer) {
         for (const AxleSolver& axle : m_axles) {
             if (&axle == selected) continue;
-            pose.samples.push_back(sampleAxleAt(axle, kind, input, rackTravel));
+            pose.samples.push_back(
+                sampleAxleAt(axle, kind, input, rackTravel, tyreCompliance));
             assembled = assembled && cornersAssembled(axle, pose.samples.back());
         }
     }

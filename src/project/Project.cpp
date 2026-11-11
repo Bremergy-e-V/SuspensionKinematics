@@ -163,6 +163,34 @@ CameraState cameraFromJson(const QJsonObject& object)
     return camera;
 }
 
+/// Each axle's rates as the manifest holds them, by corner token.
+QJsonObject ratesToJson(const QHash<QString, AxleRates>& rates)
+{
+    QJsonObject json;
+    for (auto it = rates.begin(); it != rates.end(); ++it) {
+        QJsonObject axle;
+        axle.insert(QStringLiteral("spring"), it.value().springRate);
+        axle.insert(QStringLiteral("antiRollBar"), it.value().antiRollRate);
+        axle.insert(QStringLiteral("tyre"), it.value().tyreRate);
+        json.insert(it.key(), axle);
+    }
+    return json;
+}
+
+/// The inverse. A rate that is missing is zero -- no bar, or a tyre taken as
+/// rigid -- which is what it means everywhere else too.
+QHash<QString, AxleRates> ratesFromJson(const QJsonObject& json)
+{
+    QHash<QString, AxleRates> rates;
+    for (auto it = json.begin(); it != json.end(); ++it) {
+        const QJsonObject axle = it.value().toObject();
+        rates.insert(it.key(), AxleRates{ axle.value(QStringLiteral("spring")).toDouble(),
+                                          axle.value(QStringLiteral("antiRollBar")).toDouble(),
+                                          axle.value(QStringLiteral("tyre")).toDouble() });
+    }
+    return rates;
+}
+
 QJsonObject mirrorToJson(const MirrorSpec& spec)
 {
     QJsonObject object;
@@ -304,6 +332,13 @@ std::optional<StaticAlignment> Project::alignmentFor(const QString& corner) cons
 {
     const auto it = m_alignment.constFind(corner);
     if (it == m_alignment.constEnd()) return std::nullopt;
+    return *it;
+}
+
+std::optional<AxleRates> Project::ratesFor(const QString& corner) const
+{
+    const auto it = m_rates.constFind(corner);
+    if (it == m_rates.constEnd()) return std::nullopt;
     return *it;
 }
 
@@ -481,6 +516,7 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
         state.animationSeconds =
             simulation.value(QStringLiteral("animationSeconds")).toDouble(4.0);
         state.allAxles = simulation.value(QStringLiteral("allAxles")).toBool(true);
+        state.tyreCompliance = simulation.value(QStringLiteral("tyreCompliance")).toBool(false);
         state.parametersOpen = simulation.value(QStringLiteral("parametersOpen")).toBool(false);
     }
 
@@ -512,6 +548,8 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
         if (!camber.isDouble() || !toe.isDouble()) continue;
         project.m_alignment.insert(it.key(), StaticAlignment{ camber.toDouble(), toe.toDouble() });
     }
+
+    project.m_rates = ratesFromJson(root.value(QStringLiteral("rates")).toObject());
 
     const QJsonObject directories = root.value(QStringLiteral("directories")).toObject();
     project.m_lastGeometryDirectory = directories.value(QStringLiteral("geometry")).toString();
@@ -611,6 +649,7 @@ bool Project::save(QString* error) const
     simulation.insert(QStringLiteral("animating"), state.animating);
     simulation.insert(QStringLiteral("animationSeconds"), state.animationSeconds);
     simulation.insert(QStringLiteral("allAxles"), state.allAxles);
+    simulation.insert(QStringLiteral("tyreCompliance"), state.tyreCompliance);
     simulation.insert(QStringLiteral("parametersOpen"), state.parametersOpen);
     view.insert(QStringLiteral("simulation"), simulation);
 
@@ -642,6 +681,7 @@ bool Project::save(QString* error) const
         }
         root.insert(QStringLiteral("alignment"), alignment);
     }
+    if (!m_rates.isEmpty()) root.insert(QStringLiteral("rates"), ratesToJson(m_rates));
 
     QJsonObject directories;
     directories.insert(QStringLiteral("geometry"), m_lastGeometryDirectory);

@@ -5,9 +5,11 @@ namespace suspkin {
 void SimulationRunner::bind(const LinkageTemplate& templ, const HardpointTable& table,
                             const MirrorSpec& mirror,
                             const QHash<QString, StaticAlignment>& alignment,
-                            const QString& steeringNote, const HardpointConfigMap& config)
+                            const QString& steeringNote, const HardpointConfigMap& config,
+                            const QHash<QString, AxleRates>& rates)
 {
-    m_simulation = Simulation::build(templ, table, mirror, alignment, steeringNote, &config);
+    m_simulation =
+        Simulation::build(templ, table, mirror, alignment, steeringNote, &config, rates);
 }
 
 void SimulationRunner::runSweep(const SimulationRequest& request)
@@ -29,7 +31,8 @@ void SimulationRunner::pose(const SimulationRequest& request)
     m_pose = SimulationPose{};
     if (!request.simulating) return;
     m_pose = m_simulation.poseAt(request.axle, request.spec.kind, request.position,
-                                 request.spec.rackTravel, request.moveAllAxles);
+                                 request.spec.rackTravel, request.moveAllAxles,
+                                 request.spec.tyreCompliance);
 }
 
 QStringList SimulationRunner::status() const
