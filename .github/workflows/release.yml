@@ -150,9 +150,21 @@ jobs:
       # desktop install, so there is no modules: line here. If a future Qt
       # splits it out, find_package(Qt6 ... Svg) fails loudly at configure and
       # `modules: qtsvg` is the fix.
+      # aqtinstall pulls in py7zr, whose compression backends (inflate64, pybcj,
+      # pyppmd) ship wheels only up to a given Python. Left to itself the action
+      # asks for '>=3.14.0', gets whatever is newest on the runner (3.15), finds
+      # no wheels, and tries to build them -- which dies inside the MSVC
+      # environment entered above ("The input line is too long"). Pin the newest
+      # Python those wheels exist for; the action itself wants 3.14 or later.
+      - name: Set up Python for aqtinstall
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
+          setup-python: false
           version: ${{ env.QT_VERSION }}
           host: windows
           target: desktop
