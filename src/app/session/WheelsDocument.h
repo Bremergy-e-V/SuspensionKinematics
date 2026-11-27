@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/session/SessionMessage.h"
+#include "geom/MeshQuery.h"
 #include "geom/MeshTopology.h"
 #include "geom/TriMesh.h"
 #include "model/Wheels.h"
@@ -9,6 +10,7 @@
 #include <QList>
 #include <QString>
 
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -59,9 +61,20 @@ public:
     /// is old name to new.
     void followRenames(const QHash<QString, QString>& renamed);
 
+    /// @p mesh -- the tyre or the rim, as the viewport holds it -- as something
+    /// a distance can be measured to, built the first time it is asked for and
+    /// dropped whenever the models are read again or removed. Null for an
+    /// empty mesh.
+    const MeshQuery* tyreQuery(const TriMesh& mesh) { return cachedQuery(mesh, m_tyreQuery); }
+    const MeshQuery* rimQuery(const TriMesh& mesh) { return cachedQuery(mesh, m_rimQuery); }
+
 private:
+    static const MeshQuery* cachedQuery(const TriMesh& mesh, std::unique_ptr<MeshQuery>& cache);
+
     ProjectSession& m_session;
     std::vector<WheelPlacement> m_placements;
+    std::unique_ptr<MeshQuery> m_tyreQuery;
+    std::unique_ptr<MeshQuery> m_rimQuery;
 };
 
 } // namespace suspkin

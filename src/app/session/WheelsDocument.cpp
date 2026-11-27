@@ -31,6 +31,10 @@ WheelsDocument::WheelsDocument(ProjectSession& session) : m_session(session) {}
 
 std::optional<WheelModels> WheelsDocument::open(SessionMessage* problem)
 {
+    // Whatever is read now replaces what the queries were built from.
+    m_tyreQuery.reset();
+    m_rimQuery.reset();
+
     Project& project = m_session.project();
     WheelsRef wheels = project.wheels();
     if (wheels.isEmpty()) {
@@ -194,7 +198,20 @@ void WheelsDocument::remove()
 
     project.clearWheels();
     m_placements.clear();
+    m_tyreQuery.reset();
+    m_rimQuery.reset();
     m_session.markDirty();
+}
+
+const MeshQuery* WheelsDocument::cachedQuery(const TriMesh& mesh, std::unique_ptr<MeshQuery>& cache)
+{
+    if (mesh.isEmpty()) return nullptr;
+    if (!cache) {
+        QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+        cache = std::make_unique<MeshQuery>(mesh);
+        QGuiApplication::restoreOverrideCursor();
+    }
+    return cache.get();
 }
 
 void WheelsDocument::place(const HardpointTable& table, const WheelRotations& designAttitudes,

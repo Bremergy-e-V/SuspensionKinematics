@@ -935,27 +935,48 @@ corner token, beside `alignment` and for the same reason. They are **not** in
 ## Collision check
 
 **Analysis > Collision Check** (`src/app/CollisionDialog.*`,
-`features/CollisionFeature.cpp`) walks the analysis panel's current sweep --
-every axle moving, the body left where the chassis mesh is -- and lists how
-close each two parts come, and each part to the chassis, closest first.
-`src/model/Collision.*` (core, `test_collision`) does it on tables, so it needs
-no window.
+`features/CollisionFeature.cpp`) gives **one number**: the least distance
+between two things picked from two dropdowns -- any part, the rim or tyre at a
+corner, or the chassis -- over the analysis panel's current sweep, every axle
+moving, the body left where the chassis mesh is. With it, where in the sweep
+it happened and what it is at design. It recomputes on every change of the
+choice or the settings. `src/model/Collision.*` (core, `test_collision`) does
+it on tables, so it needs no window. It used to list every pair; the team
+wanted the one distance they ask about, usually a rod against a rim.
 
+- A `CollisionTarget` is written as a key (`collisionTargetKey()`): the part's
+  `LinkagePart::id`, `#rim:frontLeft`, `#tyre:rearRight` or `#chassis`. The
+  hash keeps a wheel apart from a part a template happens to call "rim".
+  `collisionTargets()` is what the dropdowns offer: parts with a member, a
+  rim and a tyre per corner the wheel spec names when that model is loaded,
+  the chassis when there is one.
 - Every member is a capsule of `memberRadius` round the line drawn for it. A
   line between two chassis points and a wheel's construction lines are not
   members.
-- **Parts joined at a point are not compared** -- including through two rows
-  that are one place at design, a strut's pushrod end and damper eye. Two parts
-  that each meet a third *are* compared, but not within `jointClearance` of that
-  third part's points: that is how a tie rod is still checked against the lower
-  wishbone (both on the upright) while a pushrod picking up beside a ball joint
-  does not read as touching its wishbone.
-- Against the chassis a member is sampled along its length, away from its own
-  chassis mounts by the same clearance. The distance is unsigned, so a member
-  inside the tub reads as close; the "At design" column is what tells a static
-  closeness from one the travel causes.
-- The settings are in the manifest under `collision`, written only when they
-  differ from the defaults.
+- **Two parts are not compared within `jointClearance` of where they meet**
+  -- including through two rows that are one place at design, a strut's
+  pushrod end and damper eye -- **nor of a third part they both meet**: that is
+  how a tie rod is still checked against the lower wishbone (both on the
+  upright) while a pushrod picking up beside a ball joint does not read as
+  touching its wishbone.
+- Against a mesh a member is sampled along its length. Against the chassis it
+  is kept the joint clearance away from its own chassis mounts; a wheel is
+  nothing's mount. The distance is unsigned, so a member inside the tub reads
+  as close; "at design" is what tells a static closeness from one the travel
+  causes.
+- **A rim or tyre is measured in its model's own frame.** Each frame carries
+  the wheel placements (`placeWheels()` in `Simulation.*`, which
+  `WheelsDocument::place()` is now a call of), and a sample is mapped by the
+  inverse of `wheelTransform()` before the model's `MeshQuery` is asked. The
+  transform is rigid with a +-1 mirror, so the distance survives it.
+- Between two meshes the distance is from the vertices of the one with fewer
+  (strided to 20000) to the other's surface: as fine as that tessellation, and
+  the dialog says so. A tyre against its own rim is refused -- they always
+  touch.
+- The meshes stay the viewport's (`rimMesh()`, `tyreMesh()` beside `mesh()`);
+  `WheelsDocument::rimQuery()`/`tyreQuery()` cache their queries the way
+  `ChassisDocument::query()` does, dropped whenever the models are read again.
+- The settings and the two keys are in the manifest under `collision`.
 
 ## Comparing with Lotus
 

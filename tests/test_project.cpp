@@ -901,7 +901,11 @@ void TestProject::collisionSettingsAreKept()
     QVERIFY2(project.has_value(), qPrintable(error));
     QVERIFY(project->collision() == CollisionSettings{});
 
-    const CollisionSettings collision{ 12.0, 4.0, 40.0, false };
+    CollisionSettings collision;
+    collision.memberRadius = 12.0;
+    collision.jointClearance = 40.0;
+    collision.first = QStringLiteral("tieRod@F:base");
+    collision.second = QStringLiteral("#rim:frontLeft");
     project->setCollision(collision);
     QVERIFY2(project->save(&error), qPrintable(error));
     QVERIFY(Project::open(project->manifestPath(), &error)->collision() == collision);

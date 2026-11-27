@@ -2,27 +2,22 @@
 
 #include "model/Sweep.h"
 
-#include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGuiApplication>
-#include <QHeaderView>
 #include <QLabel>
-#include <QPalette>
-#include <QPushButton>
-#include <QTableWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <utility>
 
 namespace suspkin {
 namespace {
 
-enum Column { MembersColumn, ClosestColumn, AtColumn, DesignColumn, ColumnCount };
-
-/// The most pairs listed: past the closest few dozen nothing is near anything.
-constexpr int kMaxRows = 60;
+/// What a distance below zero is written in: the two overlap.
+const QColor kOverlap(220, 50, 47);
 
 QDoubleSpinBox* millimetreBox(double minimum, double maximum, const QString& tip, QWidget* parent)
 {
@@ -31,146 +26,149 @@ QDoubleSpinBox* millimetreBox(double minimum, double maximum, const QString& tip
     box->setDecimals(1);
     box->setSuffix(QObject::tr(" mm"));
     box->setToolTip(tip);
+    // A value typed digit by digit would otherwise measure at every keystroke.
+    box->setKeyboardTracking(false);
     return box;
-}
-
-/// A colour mixed from the palette, the way the hardpoint table marks a row:
-/// @p tint into the base colour, so it reads on a light desktop and a dark one.
-QColor mixed(const QPalette& palette, const QColor& tint)
-{
-    const QColor base = palette.color(QPalette::Base);
-    const double share = 0.35;
-    return QColor::fromRgbF(base.redF() * (1 - share) + tint.redF() * share,
-                            base.greenF() * (1 - share) + tint.greenF() * share,
-                            base.blueF() * (1 - share) + tint.blueF() * share);
 }
 
 } // namespace
 
-CollisionDialog::CollisionDialog(const CollisionSettings& settings, const QString& travel,
-                                 Check check, QWidget* parent)
-    : QDialog(parent), m_check(std::move(check))
+CollisionDialog::CollisionDialog(const CollisionSettings& settings,
+                                 std::vector<CollisionChoice> choices, const QString& travel,
+                                 const QString& unit, Check check, QWidget* parent)
+    : QDialog(parent),
+      m_check(std::move(check)),
+      m_travel(travel),
+      m_unit(unit),
+      m_choices(std::move(choices))
 {
     setWindowTitle(tr("Collision Check"));
-    resize(720, 560);
+    resize(520, 0);
 
     auto* intro = new QLabel(
-        tr("Every member is taken as a round tube around the line drawn for it, and the "
-           "suspension is walked through the travel the analysis panel sweeps. Listed is how "
-           "close each two parts come, and each part to the chassis, closest first. Parts bolted "
-           "together are not compared, and two that meet a third are not compared round that "
-           "joint."),
+        tr("The least distance between two things over the travel the analysis panel sweeps. "
+           "A member is taken as a round tube around the line drawn for it; two parts that "
+           "meet, or meet a third, are not compared round that joint."),
         this);
     intro->setWordWrap(true);
+
+    m_first = new QComboBox(this);
+    m_second = new QComboBox(this);
+    for (QComboBox* box : { m_first, m_second }) {
+        for (const CollisionChoice& choice : m_choices) box->addItem(choice.label, choice.key);
+        box->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    }
+    // A part against the first rim is what the check is mostly for.
+    const auto firstMesh = std::find_if(m_choices.begin(), m_choices.end(),
+                                        [](const CollisionChoice& c) { return c.isMesh; });
+    const int meshIndex = firstMesh == m_choices.end()
+                              ? std::min(1, static_cast<int>(m_choices.size()) - 1)
+                              : static_cast<int>(firstMesh - m_choices.begin());
+    select(m_first, settings.first, 0);
+    select(m_second, settings.second, meshIndex);
 
     m_radius = millimetreBox(0.0, 100.0,
                              tr("Half the thickness of a member: the tube each line stands for."),
                              this);
-    m_warn = millimetreBox(0.0, 100.0, tr("Clearance below this is marked as tight."), this);
     m_joint = millimetreBox(0.0, 200.0,
                             tr("How far round a joint two parts that meet there, or meet a third "
                                "part there, are not compared."),
                             this);
-    m_chassis = new QCheckBox(tr("Compare with the imported chassis"), this);
     m_radius->setValue(settings.memberRadius);
-    m_warn->setValue(settings.warnClearance);
     m_joint->setValue(settings.jointClearance);
-    m_chassis->setChecked(settings.checkChassis);
 
     auto* form = new QFormLayout;
+    form->addRow(tr("Between"), m_first);
+    form->addRow(tr("and"), m_second);
     form->addRow(tr("Member radius"), m_radius);
-    form->addRow(tr("Tight below"), m_warn);
     form->addRow(tr("Joint clearance"), m_joint);
-    form->addRow(QString(), m_chassis);
 
-    auto* runButton = new QPushButton(tr("&Check"), this);
-    runButton->setDefault(true);
-
-    m_summary = new QLabel(this);
-    m_summary->setWordWrap(true);
-
-    m_table = new QTableWidget(0, ColumnCount, this);
-    m_table->setHorizontalHeaderLabels(
-        { tr("Members"), tr("Closest [mm]"), tr("At [%1]").arg(travel), tr("At design [mm]") });
-    m_table->horizontalHeader()->setSectionResizeMode(MembersColumn, QHeaderView::Stretch);
-    m_table->verticalHeader()->setVisible(false);
-    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_result = new QLabel(this);
+    QFont large = m_result->font();
+    large.setPointSizeF(large.pointSizeF() * 1.4);
+    m_result->setFont(large);
+    m_result->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_detail = new QLabel(this);
+    m_detail->setWordWrap(true);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::accept);
-    connect(runButton, &QPushButton::clicked, this, &CollisionDialog::run);
 
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(intro);
     layout->addLayout(form);
-    layout->addWidget(runButton, 0, Qt::AlignLeft);
-    layout->addWidget(m_summary);
-    layout->addWidget(m_table, 1);
+    layout->addSpacing(8);
+    layout->addWidget(m_result);
+    layout->addWidget(m_detail);
+    layout->addStretch(1);
     layout->addWidget(buttons);
+
+    for (QComboBox* box : { m_first, m_second })
+        connect(box, &QComboBox::currentIndexChanged, this, &CollisionDialog::run);
+    for (QDoubleSpinBox* box : { m_radius, m_joint })
+        connect(box, &QDoubleSpinBox::valueChanged, this, &CollisionDialog::run);
 
     run();
 }
 
 CollisionSettings CollisionDialog::settings() const
 {
-    return CollisionSettings{ m_radius->value(), m_warn->value(), m_joint->value(),
-                              m_chassis->isChecked() };
+    CollisionSettings settings;
+    settings.memberRadius = m_radius->value();
+    settings.jointClearance = m_joint->value();
+    settings.first = m_first->currentData().toString();
+    settings.second = m_second->currentData().toString();
+    return settings;
+}
+
+void CollisionDialog::select(QComboBox* box, const QString& key, int fallback)
+{
+    const int saved = key.isEmpty() ? -1 : box->findData(key);
+    box->setCurrentIndex(saved >= 0 ? saved : fallback);
 }
 
 void CollisionDialog::run()
 {
+    if (m_choices.empty()) {
+        showResult(CollisionResult{ false, tr("There is nothing to measure: the linkage has no "
+                                              "parts and there are no wheels or chassis."),
+                                    0.0, 0.0, false, 0.0, 0 });
+        return;
+    }
     QGuiApplication::setOverrideCursor(Qt::WaitCursor);
-    const CollisionReport report = m_check(settings());
+    const CollisionResult result = m_check(settings());
     QGuiApplication::restoreOverrideCursor();
-    showReport(report);
+    showResult(result);
 }
 
-void CollisionDialog::showReport(const CollisionReport& report)
+void CollisionDialog::showResult(const CollisionResult& result)
 {
-    const double warn = m_warn->value();
-    int touching = 0;
-    int tight = 0;
-    for (const CollisionPair& pair : report.pairs) {
-        if (pair.touches()) ++touching;
-        else if (pair.minClearance < warn) ++tight;
+    if (!result.valid) {
+        m_result->setText(tr("No distance"));
+        m_result->setStyleSheet(QString());
+        m_detail->setText(result.problem);
+        return;
     }
 
-    if (report.positions == 0) {
-        m_summary->setText(tr("Nothing to check: no axle solves, or the analysis panel sweeps "
-                              "nothing."));
-    } else if (touching == 0 && tight == 0) {
-        m_summary->setText(tr("Nothing comes closer than %1 mm over %2 positions.")
-                               .arg(warn, 0, 'f', 1)
-                               .arg(report.positions));
-    } else {
-        m_summary->setText(tr("<b>%1 touching, %2 tight</b> over %3 positions.")
-                               .arg(touching)
-                               .arg(tight)
-                               .arg(report.positions));
-    }
+    m_result->setText(tr("Minimum distance: <b>%1 mm</b>").arg(sweepValueText(result.minDistance)));
+    m_result->setStyleSheet(result.touches()
+                                ? QStringLiteral("color: %1;").arg(kOverlap.name())
+                                : QString());
 
-    const QPalette palette = this->palette();
-    const int rows = std::min(static_cast<int>(report.pairs.size()), kMaxRows);
-    m_table->setRowCount(rows);
-    for (int row = 0; row < rows; ++row) {
-        const CollisionPair& pair = report.pairs[static_cast<std::size_t>(row)];
-        const QString design =
-            pair.designKnown ? sweepValueText(pair.designClearance) : QStringLiteral("-");
-        const QString cells[ColumnCount] = { pair.first + QStringLiteral(" / ") + pair.second,
-                                             sweepValueText(pair.minClearance),
-                                             sweepValueText(pair.atInput), design };
-        const bool marked = pair.touches() || pair.minClearance < warn;
-        const QColor tint = pair.touches() ? QColor(220, 50, 47) : QColor(240, 170, 30);
-        for (int column = 0; column < ColumnCount; ++column) {
-            auto* item = new QTableWidgetItem(cells[column]);
-            if (column != MembersColumn) item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            if (marked) item->setBackground(mixed(palette, tint));
-            m_table->setItem(row, column, item);
-        }
-    }
-    m_table->resizeColumnsToContents();
-    m_table->horizontalHeader()->setSectionResizeMode(MembersColumn, QHeaderView::Stretch);
+    QStringList detail;
+    detail << tr("Closest at %1 %2 %3, over %4 positions.")
+                  .arg(m_travel.toLower(), sweepValueText(result.atInput), m_unit)
+                  .arg(result.positions);
+    if (result.designKnown)
+        detail << tr("At design: %1 mm.").arg(sweepValueText(result.designDistance));
+    if (result.touches()) detail << tr("Below zero the two overlap.");
+    const auto isMesh = [&](const QComboBox* box) {
+        return m_choices[static_cast<std::size_t>(box->currentIndex())].isMesh;
+    };
+    if (isMesh(m_first) && isMesh(m_second))
+        detail << tr("Between two models the distance is measured from the vertices of the "
+                     "smaller one, so it is as fine as that model's tessellation.");
+    m_detail->setText(detail.join(QLatin1Char(' ')));
 }
 
 } // namespace suspkin

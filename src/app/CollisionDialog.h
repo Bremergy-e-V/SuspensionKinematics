@@ -3,44 +3,59 @@
 #include "model/Collision.h"
 
 #include <QDialog>
+#include <QString>
 
 #include <functional>
+#include <vector>
 
-class QCheckBox;
+class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
-class QTableWidget;
 
 namespace suspkin {
 
-/// Analysis > Collision Check: how close the members come to each other and
-/// to the chassis over the travel the analysis panel sweeps.
+/// One entry of the dialog's two dropdowns.
+struct CollisionChoice {
+    QString key;   ///< @ref collisionTargetKey
+    QString label; ///< what the user reads
+    bool isMesh = false;
+};
+
+/// Analysis > Collision Check: the least distance between two things the user
+/// picks -- a part, a rim, a tyre or the chassis -- over the travel the
+/// analysis panel sweeps.
 ///
-/// The dialog holds the settings and shows the report; working the report out
-/// is the caller's, handed in as @p check, because that is where the solve and
-/// the chassis are.
+/// The dialog holds the choice and the settings and shows the answer; working
+/// it out is the caller's, handed in as @p check, because that is where the
+/// solve and the meshes are.
 class CollisionDialog : public QDialog {
     Q_OBJECT
 
 public:
-    using Check = std::function<CollisionReport(const CollisionSettings&)>;
+    using Check = std::function<CollisionResult(const CollisionSettings&)>;
 
-    CollisionDialog(const CollisionSettings& settings, const QString& travel, Check check,
+    CollisionDialog(const CollisionSettings& settings, std::vector<CollisionChoice> choices,
+                    const QString& travel, const QString& unit, Check check,
                     QWidget* parent = nullptr);
 
     CollisionSettings settings() const;
 
 private:
+    /// Put the saved choice back in @p box, or @p fallback when it is gone.
+    void select(QComboBox* box, const QString& key, int fallback);
     void run();
-    void showReport(const CollisionReport& report);
+    void showResult(const CollisionResult& result);
 
     Check m_check;
+    QString m_travel;
+    QString m_unit;
+    std::vector<CollisionChoice> m_choices;
+    QComboBox* m_first = nullptr;
+    QComboBox* m_second = nullptr;
     QDoubleSpinBox* m_radius = nullptr;
-    QDoubleSpinBox* m_warn = nullptr;
     QDoubleSpinBox* m_joint = nullptr;
-    QCheckBox* m_chassis = nullptr;
-    QLabel* m_summary = nullptr;
-    QTableWidget* m_table = nullptr;
+    QLabel* m_result = nullptr;
+    QLabel* m_detail = nullptr;
 };
 
 } // namespace suspkin

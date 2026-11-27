@@ -50,6 +50,10 @@ public:
     /// already, so nothing else keeps a second copy of a mesh that can run to
     /// a million triangles.
     const TriMesh& mesh() const { return m_mesh; }
+    /// The tyre and rim models, in their own coordinates, for the same reason:
+    /// the collision check measures to them, and they are held here already.
+    const TriMesh& tyreMesh() const { return m_wheelMesh; }
+    const TriMesh& rimMesh() const { return m_rimMesh; }
 
     /// Draw the imported geometry moved by @p transform rather than where its
     /// file put it. It is the chassis, so when the body rolls it goes with it;
