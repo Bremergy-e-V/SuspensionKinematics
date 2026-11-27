@@ -202,22 +202,7 @@ void WheelsDocument::place(const HardpointTable& table, const WheelRotations& de
 {
     const WheelsRef& wheels = m_session.project().wheels();
     m_placements = wheels.isEmpty() ? std::vector<WheelPlacement>{}
-                                    : resolveWheels(wheels.spec, pose.layOver(table));
-    // The models are drawn upright and square to the car, so each is first
-    // turned to its corner's static camber and toe.
-    orientWheels(m_placements, designAttitudes);
-    // A wheel is bolted to its upright, so it goes where the upright goes and
-    // turns the way the upright turns. Without this the models slide about the
-    // car on steering lock without ever pointing anywhere.
-    orientWheels(m_placements, pose.wheelRotations());
-    // And a rolled body leans all four with it. The upright's turn is measured
-    // in the body, so it comes first and the body's after it. Their centres are
-    // already where the body put them: they came out of the pose.
-    if (pose.bodyMotion) {
-        const QQuaternion body = pose.bodyMotion->toQuaternion();
-        for (WheelPlacement& placement : m_placements)
-            placement.rotation = body * placement.rotation;
-    }
+                                    : placeWheels(wheels.spec, table, designAttitudes, pose);
 }
 
 void WheelsDocument::followRenames(const QHash<QString, QString>& renamed)

@@ -44,6 +44,14 @@ struct SimulationPose {
     WheelRotations wheelRotations() const;
 };
 
+/// Where @p spec puts the wheel models with the car standing as @p pose has it
+/// over @p table, each first turned to the static camber and toe
+/// @p designAttitudes gives its wheel centre, then by its upright's motion, then
+/// by the body's roll.
+std::vector<WheelPlacement> placeWheels(const WheelSpec& spec, const HardpointTable& table,
+                                        const WheelRotations& designAttitudes,
+                                        const SimulationPose& pose);
+
 /// Every axle a linkage template describes, bound to the table as it stands.
 ///
 /// This is the whole of what the window knows about solving: which axles there

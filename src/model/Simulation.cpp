@@ -69,6 +69,29 @@ WheelRotations SimulationPose::wheelRotations() const
     return rotations;
 }
 
+std::vector<WheelPlacement> placeWheels(const WheelSpec& spec, const HardpointTable& table,
+                                        const WheelRotations& designAttitudes,
+                                        const SimulationPose& pose)
+{
+    std::vector<WheelPlacement> placements = resolveWheels(spec, pose.layOver(table));
+    // The models are drawn upright and square to the car, so each is first
+    // turned to its corner's static camber and toe.
+    orientWheels(placements, designAttitudes);
+    // A wheel is bolted to its upright, so it goes where the upright goes and
+    // turns the way the upright turns. Without this the models slide about the
+    // car on steering lock without ever pointing anywhere.
+    orientWheels(placements, pose.wheelRotations());
+    // And a rolled body leans all four with it. The upright's turn is measured
+    // in the body, so it comes first and the body's after it. Their centres are
+    // already where the body put them: they came out of the pose.
+    if (pose.bodyMotion) {
+        const QQuaternion body = pose.bodyMotion->toQuaternion();
+        for (WheelPlacement& placement : placements)
+            placement.rotation = body * placement.rotation;
+    }
+    return placements;
+}
+
 // ---------------------------------------------------------------------------
 // Simulation
 // ---------------------------------------------------------------------------
