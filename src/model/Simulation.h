@@ -121,6 +121,12 @@ public:
     SimulationPose poseAt(const QString& token, SweepKind kind, double input, double rackTravel,
                           bool moveAllAxles, bool tyreCompliance = false) const;
 
+    /// Where the car stands with every wheel @p wheelTravel from ride height
+    /// and the rack @p rackTravel off centre, on every axle it steers: the
+    /// corners' positions alone, none of the measures a sweep reads off them.
+    /// Nothing where a corner does not assemble.
+    std::optional<SimulationPose> poseAtWheelTravel(double wheelTravel, double rackTravel) const;
+
 private:
     std::vector<AxleSolver> m_axles;
     QString m_note;

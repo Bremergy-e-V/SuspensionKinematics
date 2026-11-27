@@ -194,6 +194,21 @@ const AxleSolver* Simulation::axleFor(const QString& token) const
     return &m_axles.front();
 }
 
+std::optional<SimulationPose> Simulation::poseAtWheelTravel(double wheelTravel,
+                                                            double rackTravel) const
+{
+    SimulationPose pose;
+    for (const AxleSolver& axle : m_axles) {
+        AxleSample sample;
+        sample.input = wheelTravel;
+        if (axle.left()) sample.left = axle.left()->poseAtWheelTravel(wheelTravel, rackTravel);
+        if (axle.right()) sample.right = axle.right()->poseAtWheelTravel(wheelTravel, rackTravel);
+        if (!cornersAssembled(axle, sample)) return std::nullopt;
+        pose.samples.push_back(std::move(sample));
+    }
+    return pose;
+}
+
 SimulationPose Simulation::poseAt(const QString& token, SweepKind kind, double input,
                                   double rackTravel, bool moveAllAxles,
                                   bool tyreCompliance) const

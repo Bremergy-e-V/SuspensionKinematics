@@ -904,6 +904,7 @@ void TestProject::collisionSettingsAreKept()
     CollisionSettings collision;
     collision.memberRadius = 12.0;
     collision.jointClearance = 40.0;
+    collision.memberRadii.insert(collisionMemberKey(QStringLiteral("F_LCA_IF"), QStringLiteral("F_LCA_O")), 8.0);
     collision.first = QStringLiteral("tieRod@F:base");
     collision.second = QStringLiteral("#rim:frontLeft");
     project->setCollision(collision);

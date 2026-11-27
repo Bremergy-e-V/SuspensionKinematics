@@ -935,24 +935,46 @@ corner token, beside `alignment` and for the same reason. They are **not** in
 ## Collision check
 
 **Analysis > Collision Check** (`src/app/CollisionDialog.*`,
-`features/CollisionFeature.cpp`) gives **one number**: the least distance
-between two things picked from two dropdowns -- any part, the rim or tyre at a
-corner, or the chassis -- over the analysis panel's current sweep, every axle
-moving, the body left where the chassis mesh is. With it, where in the sweep
-it happened and what it is at design. It recomputes on every change of the
-choice or the settings. `src/model/Collision.*` (core, `test_collision`) does
-it on tables, so it needs no window. It used to list every pair; the team
-wanted the one distance they ask about, usually a rod against a rim.
+`features/CollisionFeature.cpp`) gives the least distance between two things
+picked from two dropdowns -- any part or **one tube of it**, the rim or tyre at
+a corner, or the chassis -- three ways: **at ride height with the rack
+anywhere** (the static clearance a car is signed off on at any steering
+position), **anywhere** (rack anywhere, wheels anywhere from full rebound to
+full bump), and straight ahead at ride height. Each with where in the travel
+and on which tube. Below zero the headline says "Collision at" that position.
+It recomputes on every change of the choice or the settings.
+`src/model/Collision.*` (core, `test_collision`) does it on tables, so it needs
+no window.
 
+- **The travel is the sweep parameters' ranges, not the current sweep**:
+  `steerTravel`, `bumpTravel`, `reboundTravel` (`CollisionTravel`), whichever
+  kind the panel shows. A closest approach at full lock *and* part bump is the
+  normal case, and one sweep variable cannot find it.
+- **It searches, it does not walk.** `minimumDistance()` asks a
+  `CollisionFrameSource` for the car at whatever (rack, wheel travel) it wants:
+  a 2 mm grid, then ever finer steps round its closest point down to 0.1 mm --
+  a few hundred positions where a fine grid would be tens of thousands. The
+  feature answers through `Simulation::poseAtWheelTravel()`, which solves the
+  corners and nothing else, and caches each position for as long as the dialog
+  is open. Do not go back to `poseAt()` there: through `sampleAxleAt()` it
+  solves every corner three times for the installation ratio and was most of
+  what made the first version take seconds.
+- **A mesh is not asked where it cannot matter.** The distance to a surface
+  changes no faster than the point moves, so `SkippingWalk` skips every sample
+  the last measured one proves cannot come under the record (or the ceiling the
+  search hands in). That is what lets a tube be sampled every millimetre.
 - A `CollisionTarget` is written as a key (`collisionTargetKey()`): the part's
-  `LinkagePart::id`, `#rim:frontLeft`, `#tyre:rearRight` or `#chassis`. The
-  hash keeps a wheel apart from a part a template happens to call "rim".
-  `collisionTargets()` is what the dropdowns offer: parts with a member, a
-  rim and a tyre per corner the wheel spec names when that model is loaded,
-  the chassis when there is one.
-- Every member is a capsule of `memberRadius` round the line drawn for it. A
-  line between two chassis points and a wheel's construction lines are not
-  members.
+  `LinkagePart::id`, `#member:<part id>|<from>|<to>`, `#rim:frontLeft`,
+  `#tyre:rearRight` or `#chassis`. The hash keeps a wheel apart from a part a
+  template happens to call "rim". `collisionTargets()` is what the dropdowns
+  offer: parts with a member, each followed by its tubes when it has more than
+  one, a rim and a tyre per corner the wheel spec names when that model is
+  loaded, the chassis when there is one.
+- Every member is a capsule round the line drawn for it, of
+  `CollisionSettings::radiusOf()`: its own radius from `memberRadii` -- keyed
+  by its two ends' names in alphabetical order (`collisionMemberKey()`) --
+  else `memberRadius`. A wishbone's two legs are rarely one tube. A line
+  between two chassis points and a wheel's construction lines are not members.
 - **Two parts are not compared within `jointClearance` of where they meet**
   -- including through two rows that are one place at design, a strut's
   pushrod end and damper eye -- **nor of a third part they both meet**: that is
@@ -962,8 +984,8 @@ wanted the one distance they ask about, usually a rod against a rim.
 - Against a mesh a member is sampled along its length. Against the chassis it
   is kept the joint clearance away from its own chassis mounts; a wheel is
   nothing's mount. The distance is unsigned, so a member inside the tub reads
-  as close; "at design" is what tells a static closeness from one the travel
-  causes.
+  as close; "straight ahead at ride height" is what tells a static closeness
+  from one the travel causes.
 - **A rim or tyre is measured in its model's own frame.** Each frame carries
   the wheel placements (`placeWheels()` in `Simulation.*`, which
   `WheelsDocument::place()` is now a call of), and a sample is mapped by the
@@ -972,11 +994,12 @@ wanted the one distance they ask about, usually a rod against a rim.
 - Between two meshes the distance is from the vertices of the one with fewer
   (strided to 20000) to the other's surface: as fine as that tessellation, and
   the dialog says so. A tyre against its own rim is refused -- they always
-  touch.
+  touch -- and so is a part against itself or one of its own tubes.
 - The meshes stay the viewport's (`rimMesh()`, `tyreMesh()` beside `mesh()`);
   `WheelsDocument::rimQuery()`/`tyreQuery()` cache their queries the way
   `ChassisDocument::query()` does, dropped whenever the models are read again.
-- The settings and the two keys are in the manifest under `collision`.
+- The settings, the per-tube radii and the two keys are in the manifest under
+  `collision`.
 
 ## Comparing with Lotus
 
