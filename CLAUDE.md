@@ -896,33 +896,41 @@ what the car is made of, and not the workbook, which holds points.
   outboard of a wheel centre 228.6 mm up is -0.2°. That, not the solver, is what
   made the camber curves disagree with Lotus.
 
-## Springs, the bar and the tyre
+## Springs, bar and tyres
 
-**Linkage > Springs and Tyres** (`src/app/SpringsDialog.*`,
-`features/SpringsFeature.cpp`) gives each axle a spring rate (N/mm, the coil on
-the damper), an anti-roll bar rate (N·m per degree of twist), a tyre rate (N/mm)
-and a static wheel load (N), stored in the manifest under `springs` by corner
-token. Zero is "not given". Not in `EditState`: like the design targets, they
-are saved when the dialog is accepted.
+**Linkage > Springs and Tyres** states `AxleRates` per axle -- spring N/mm, bar
+Nm/deg at the bar, tyre N/mm -- stored in the manifest under `rates`, keyed by
+corner token, beside `alignment` and for the same reason. They are **not** in
+`EditState`: they move no point, so the dialog records no step.
 
-- `src/model/SpringLoads.*` (core, tested) turns the solved motion into forces
-  by **virtual work**, so nothing about the car's mass is needed: the spring
-  puts `F_spring * IR` on the wheel, the bar `k * twist * d(arm)/dx` (in
-  radians -- a degree slipped in here once made it 57 times too stiff). The
-  static load is carried as a preload set by the design installation ratio, so
-  the design position reads back exactly that load.
-- `Simulation::build()` hands each axle its rates (`AxleSolver::setSprings()`);
-  `runSweep()` and `sampleAxleAt()` then fill `AxleSample::leftLoad`/
-  `rightLoad` and `rollMoment`. The design ratio is the one the sample at input
-  0 measures, the same difference, not a probe of its own.
-- The measures: Spring force, Wheel rate (`k * IR^2`), Wheel load, Tyre
-  deflection, Ride rate (wheel rate and tyre in series), Travel incl. tyre (the
-  wheel's travel plus what the tyre gives -- how far the body comes down), and
-  Roll moment (axle-wide, positive resisting positive roll). An unsprung axle
-  offers none of them and its CSV has none of their columns.
-- `test_kinematics` holds the roll moment to `k * twist * d(twist)/d(roll)` --
-  what the bar's energy costs per degree -- and a bump's load to the wheel rate
-  plus the preload times the change in ratio.
+- `src/model/Compliance.*` is the whole of the physics, pure and in the core.
+  The force at a contact patch is the springs' stored energy differentiated
+  against that patch's own rise (`axleSpringing()`), so a motion ratio that
+  changes through the travel and the bar's coupling of the two sides are in it
+  without being named. The spring is taken to sit on the damper; an axle whose
+  mechanism has no damper cannot be sprung (`AxleSolver::canDeflectTyres()`).
+- **Everything is a change from the design position**, which is the car at its
+  static ride height. That is why no preload and no corner weight is asked for.
+- With rates an axle's bump and roll samples carry `AxleSample::loads` whether
+  or not the tyres give way; `SweepResult::hasLoads` is what adds the CSV
+  columns, so a sheet of an axle without rates is byte for byte what it was.
+- **`SweepSpec::tyreCompliance` changes what the input means.** It is then the
+  body against the *road*: `solveCompliantAxle()` shares the road's rise out
+  between suspension and tyre until each patch carries what its tyre's
+  deflection makes. Wheel travel is a result, and a bump's axis is labelled
+  "Body travel to road" (`sweepInputLabel()`, `SweepResult::tyresDeflect`). Off,
+  or on an axle without rates, the old path runs untouched -- the compliant one
+  is a separate walk (`walkCompliant()`), because the bar makes it solve both
+  sides of a sample together where the rigid one solves each side on its own.
+- The returned pose is the suspension's, with its contact patch moved up by the
+  deflection onto the road (`settleOnRoad()`), so the roll centre is measured
+  from where the tyre actually stands. Camber, toe, scrub and the rest are the
+  suspension's own.
+- A roll is a pure roll at fixed ride height, as it always was: the axle's two
+  load changes need not sum to zero.
+- The switch is `SimulationState::tyreCompliance`, the "Include tyre stiffness"
+  box in the sweep parameters window, and it reaches the viewport's pose through
+  `Simulation::poseAt()` as well as the sweep.
 
 ## Collision check
 
@@ -1098,14 +1106,12 @@ layer they register into and `src/app/features/` is where they come from:
   library: `QTabBar`, `QStackedWidget` and buttons that paint themselves from the
   palette, the same rule as the hardpoint table. Nothing in it holds a colour of
   its own.
-- **The logo** is `resources/logo/suspkin.svg`, embedded as `:/logo/suspkin.svg`
-  and rendered per size by `appLogo()` (`src/app/AppLogo.*`) for the window
-  icon and the launcher -- not through Qt's SVG icon engine, a plugin a
-  deployment can leave out. The exe's icon (`packaging/windows/suspkin.ico`,
-  through `suspkin.rc`, and the installer's `SetupIconFile`) and the Linux
-  `suspkin.png` are the same drawing rasterised with `QSvgRenderer` and
-  committed; a change to the SVG has to be rendered into both again. XML
-  comments in it must not contain `--`, or the renderer refuses the file.
+- **The application icon** is committed as PNGs in `resources/appicon/`:
+  `suspkin.png` is embedded as `:/appicon/suspkin.png` and set as every
+  window's icon in `main()`, and the sized ones are installed into the Linux
+  icon theme under the name `suspkin.desktop` asks for. The exe's icon is
+  `packaging/windows/suspkin.ico`, through `suspkin.rc` and the installer's
+  `SetupIconFile`; a new icon has to be put into both.
 - `--screenshot-window <png>` grabs the whole window, so the ribbon is checked
   headlessly the same way the renderer is.
 

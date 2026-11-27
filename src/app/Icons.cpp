@@ -79,7 +79,6 @@ constexpr IconEntry kIcons[] = {
     { Icon::Triangles, "triangles" },
     { Icon::Vector, "vector" },
     { Icon::Wand, "wand" },
-    { Icon::WaveSine, "wave-sine" },
     { Icon::Wheel, "wheel" },
     { Icon::X, "x" },
 };

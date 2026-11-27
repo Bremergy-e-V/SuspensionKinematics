@@ -49,7 +49,8 @@ private slots:
     void anOlderProjectsSingleRangeBecomesThatKindsOwnTravel();
     void aProjectWithAPlotPerCurveOpensOnItsFirstCurveAndItsAxle();
     void staticAnglesAreKeptPerAxle();
-    void springRatesAreKeptPerAxle();
+    void springAndTyreRatesAreKeptPerAxle();
+    void collisionSettingsAreKept();
 
     void editsAreTheDifferenceFromTheWorkbook();
     void editsRoundTripThroughTheirFile();
@@ -716,6 +717,7 @@ void TestProject::everySweepsTravelIsRememberedNotJustTheOneBeingSwept()
     simulation.animating = true;
     simulation.animationSeconds = 2.5;
     simulation.allAxles = false;
+    simulation.tyreCompliance = true;
     simulation.parametersOpen = true;
     project->setView(view);
     QVERIFY2(project->save(&error), qPrintable(error));
@@ -735,6 +737,7 @@ void TestProject::everySweepsTravelIsRememberedNotJustTheOneBeingSwept()
     QCOMPARE(back.animating, true);
     QCOMPARE(back.animationSeconds, 2.5);
     QCOMPARE(back.allAxles, false);
+    QCOMPARE(back.tyreCompliance, true);
     QCOMPARE(back.parametersOpen, true);
 
     // The bump travel survives a project that was left in roll. Keeping only
@@ -862,29 +865,45 @@ void TestProject::aProjectWithAPlotPerCurveOpensOnItsFirstCurveAndItsAxle()
     QCOMPARE(saved.value(QStringLiteral("plotAxles")).toArray(), QJsonArray{ QStringLiteral("R") });
 }
 
-void TestProject::springRatesAreKeptPerAxle()
+void TestProject::springAndTyreRatesAreKeptPerAxle()
 {
     QTemporaryDir directory;
     QString error;
     std::optional<Project> project =
         Project::create(directory.filePath(QStringLiteral("A")), QStringLiteral("A"), &error);
     QVERIFY2(project.has_value(), qPrintable(error));
-    QVERIFY(project->springs().isEmpty());
+    // A project that was never given any has none, and does not write the key.
+    QVERIFY(project->rates().isEmpty());
+    QVERIFY(!project->view().simulation.tyreCompliance);
 
-    QHash<QString, AxleSprings> springs;
-    springs.insert(QStringLiteral("F"), AxleSprings{ 35.5, 120.0, 180.0, 650.0 });
-    project->setSprings(springs);
+    QHash<QString, AxleRates> rates;
+    rates.insert(QStringLiteral("F"), AxleRates{ 35.5, 120.0, 180.25 });
+    project->setRates(rates);
     QVERIFY2(project->save(&error), qPrintable(error));
 
     std::optional<Project> reopened = Project::open(project->manifestPath(), &error);
     QVERIFY2(reopened.has_value(), qPrintable(error));
-    QCOMPARE(reopened->springs().size(), 1);
-    QVERIFY(reopened->springs().value(QStringLiteral("F")) == springs.value(QStringLiteral("F")));
-    QVERIFY(reopened->collision() == CollisionSettings{});
+    QCOMPARE(reopened->rates().size(), 1);
+    const std::optional<AxleRates> front = reopened->ratesFor(QStringLiteral("F"));
+    QVERIFY(front.has_value());
+    QCOMPARE(front->springRate, 35.5);
+    QCOMPARE(front->antiRollRate, 120.0);
+    QCOMPARE(front->tyreRate, 180.25);
+    QVERIFY(!reopened->ratesFor(QStringLiteral("R")).has_value());
+}
+
+void TestProject::collisionSettingsAreKept()
+{
+    QTemporaryDir directory;
+    QString error;
+    std::optional<Project> project =
+        Project::create(directory.filePath(QStringLiteral("A")), QStringLiteral("A"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY(project->collision() == CollisionSettings{});
 
     const CollisionSettings collision{ 12.0, 4.0, 40.0, false };
-    reopened->setCollision(collision);
-    QVERIFY2(reopened->save(&error), qPrintable(error));
+    project->setCollision(collision);
+    QVERIFY2(project->save(&error), qPrintable(error));
     QVERIFY(Project::open(project->manifestPath(), &error)->collision() == collision);
 }
 

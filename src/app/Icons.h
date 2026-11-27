@@ -67,7 +67,6 @@ enum class Icon {
     Triangles,
     Vector,
     Wand,
-    WaveSine,
     Wheel,
     X,
 

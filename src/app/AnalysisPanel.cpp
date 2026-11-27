@@ -208,6 +208,9 @@ void AnalysisPanel::buildUi()
     connect(m_parameters, &SweepParametersDialog::movesAllAxlesChanged, this, [this] {
         if (!m_updating) emit positionChanged(position());
     });
+    connect(m_parameters, &SweepParametersDialog::tyreComplianceChanged, this, [this] {
+        if (!m_updating) emit specChanged();
+    });
     connect(m_parameters, &SweepParametersDialog::animationSecondsChanged, this, [this] {
         if (!m_updating) emit playbackChanged();
     });
@@ -617,7 +620,12 @@ void AnalysisPanel::setKind(SweepKind kind)
     syncPositionRange();
 }
 
-SweepSpec AnalysisPanel::spec() const { return settings().specFor(kind()); }
+SweepSpec AnalysisPanel::spec() const
+{
+    SweepSpec spec = settings().specFor(kind());
+    spec.tyreCompliance = includesTyreCompliance();
+    return spec;
+}
 
 double AnalysisPanel::animationSeconds() const { return m_parameters->animationSeconds(); }
 
@@ -686,6 +694,18 @@ void AnalysisPanel::setAnimating(bool animating)
 }
 
 bool AnalysisPanel::movesAllAxles() const { return m_parameters->movesAllAxles(); }
+
+bool AnalysisPanel::includesTyreCompliance() const
+{
+    return m_parameters->includesTyreCompliance();
+}
+
+void AnalysisPanel::setIncludesTyreCompliance(bool included)
+{
+    m_updating = true;
+    m_parameters->setIncludesTyreCompliance(included);
+    m_updating = false;
+}
 
 void AnalysisPanel::setMovesAllAxles(bool all)
 {

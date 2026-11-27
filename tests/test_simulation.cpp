@@ -123,6 +123,7 @@ private slots:
     void statedStaticAnglesOutrankWhatTheTableWouldHaveSaid();
     void aConfiguredCarSolvesTheWayItsRolesDo();
     void settingsThatLeaveTheUprightLooseFallBackToTheRoles();
+    void ratesReachTheirAxleAndNoOther();
 
     // --- what it says when it cannot solve --------------------------------
     void anEmptyTableAsksForHardpoints();
@@ -454,6 +455,37 @@ void TestSimulation::anUprightWheelModelIsTurnedToTheStaticCamberAndToe()
     alignment.insert(QStringLiteral("F"), StaticAlignment{ -1.5, 0.25 });
     expectAngles(buildFor(wholeCar(), twoAxleTemplate(), alignment).designWheelAttitudes(), -1.5,
                  0.25);
+}
+
+void TestSimulation::ratesReachTheirAxleAndNoOther()
+{
+    // The front given rates, the rear not: an axle that is not in there is
+    // kinematics alone, whatever the pose is asked for.
+    QHash<QString, AxleRates> rates;
+    rates.insert(QStringLiteral("F"), AxleRates{ 40.0, 0.0, 120.0 });
+    const Simulation simulation =
+        Simulation::build(twoAxleTemplate(), wholeCar(), MirrorSpec{}, {}, QString(), nullptr,
+                          rates);
+
+    const AxleSolver* front = simulation.axleFor(QStringLiteral("F"));
+    const AxleSolver* rear = simulation.axleFor(QStringLiteral("R"));
+    QVERIFY(front && rear);
+    QVERIFY(front->rates().has_value());
+    QCOMPARE(front->rates()->tyreRate, 120.0);
+    QVERIFY(!rear->rates().has_value());
+
+    // This car's corners have no damper, so there is nothing for a spring to
+    // sit on: asking for the tyres to give way leaves the pose where it was
+    // rather than inventing a force. What they do on a corner that has one is
+    // test_kinematics' business.
+    QVERIFY(!front->canDeflectTyres());
+    const SimulationPose rigid =
+        simulation.poseAt(QStringLiteral("F"), SweepKind::Bump, 20.0, 0.0, true, false);
+    const SimulationPose asked =
+        simulation.poseAt(QStringLiteral("F"), SweepKind::Bump, 20.0, 0.0, true, true);
+    QCOMPARE(asked.samples.size(), std::size_t(2));
+    QCOMPARE(asked.samples.front().left.wheelTravel, rigid.samples.front().left.wheelTravel);
+    QVERIFY(!asked.samples.front().loads.valid);
 }
 
 QTEST_MAIN(TestSimulation)

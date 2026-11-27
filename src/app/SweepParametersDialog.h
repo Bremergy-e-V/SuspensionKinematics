@@ -43,6 +43,10 @@ public:
     bool movesAllAxles() const;
     void setMovesAllAxles(bool all);
 
+    /// Whether the tyres give way in a bump or a roll.
+    bool includesTyreCompliance() const;
+    void setIncludesTyreCompliance(bool included);
+
     /// Which of the three blocks is the live one. Shown rather than acted on:
     /// the other two stay editable, because setting up a roll sweep before
     /// switching to it is the normal way round.
@@ -58,6 +62,7 @@ signals:
     void settingsChanged();
     void animationSecondsChanged();
     void movesAllAxlesChanged();
+    void tyreComplianceChanged();
     /// The window was closed by the user. Its being open is project state like
     /// anything else, so somebody has to hear about it.
     void closedByUser();
@@ -91,6 +96,7 @@ private:
     QDoubleSpinBox* m_rack = nullptr;
     QDoubleSpinBox* m_seconds = nullptr;
     QCheckBox* m_allAxles = nullptr;
+    QCheckBox* m_tyreCompliance = nullptr;
 
     QLabel* m_bumpSummary = nullptr;
     QLabel* m_rollSummary = nullptr;

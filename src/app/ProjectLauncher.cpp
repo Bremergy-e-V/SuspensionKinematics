@@ -1,5 +1,4 @@
 #include "app/ProjectLauncher.h"
-#include "app/AppLogo.h"
 
 #include "app/RecentProjects.h"
 #include "project/Project.h"
@@ -182,16 +181,8 @@ ProjectLauncher::ProjectLauncher(QWidget* parent) : QDialog(parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(18, 18, 18, 18);
     layout->setSpacing(10);
-    auto* logo = new QLabel(this);
-    logo->setPixmap(appLogoPixmap(64, devicePixelRatioF()));
-    auto* titles = new QVBoxLayout;
-    titles->addWidget(heading);
-    titles->addWidget(subheading);
-    auto* header = new QHBoxLayout;
-    header->setSpacing(14);
-    header->addWidget(logo, 0, Qt::AlignTop);
-    header->addLayout(titles, 1);
-    layout->addLayout(header);
+    layout->addWidget(heading);
+    layout->addWidget(subheading);
     layout->addSpacing(6);
     layout->addWidget(m_list, 1);
     layout->addWidget(m_empty, 1);

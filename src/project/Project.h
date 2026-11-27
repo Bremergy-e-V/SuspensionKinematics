@@ -58,6 +58,9 @@ struct SimulationState {
     bool animating = false;
     double animationSeconds = 4.0;
     bool allAxles = true;
+    /// Whether the tyres give way in a bump or a roll, on the axles whose rates
+    /// the project states. Off is the purely kinematic sweep.
+    bool tyreCompliance = false;
     /// Whether the parameters window was left open. A window the user arranged
     /// is state like any other, so it comes back the way they left it.
     bool parametersOpen = false;
@@ -324,12 +327,15 @@ public:
         m_alignment = alignment;
     }
 
-    /// Each axle's spring, anti-roll bar and tyre rates, by corner token
-    /// (Linkage > Springs and Tyres): what the loads a sweep reads come from.
-    /// An axle that is not here is solved for its kinematics alone. Like the
-    /// static angles, a setting on the car rather than a part of it.
-    const QHash<QString, AxleSprings>& springs() const { return m_springs; }
-    void setSprings(const QHash<QString, AxleSprings>& springs) { m_springs = springs; }
+    /// Each axle's spring, anti-roll bar and tyre rates, by corner token, for
+    /// the axles the user has given them. An axle that is not here has no
+    /// forces: its sweeps are kinematics alone, as every sweep was before.
+    ///
+    /// In the manifest for the reason the static angles are: they are a setting
+    /// on the car, not something a template or a workbook has a place for.
+    const QHash<QString, AxleRates>& rates() const { return m_rates; }
+    std::optional<AxleRates> ratesFor(const QString& corner) const;
+    void setRates(const QHash<QString, AxleRates>& rates) { m_rates = rates; }
 
     /// How Analysis > Collision Check sees the members and what it calls tight.
     const CollisionSettings& collision() const { return m_collision; }
@@ -362,7 +368,7 @@ private:
     std::vector<RockerDesign> m_rockers;
     std::vector<PushrodDesign> m_pushrods;
     QHash<QString, StaticAlignment> m_alignment;
-    QHash<QString, AxleSprings> m_springs;
+    QHash<QString, AxleRates> m_rates;
     CollisionSettings m_collision;
     QString m_lastGeometryDirectory;
     QString m_lastHardpointDirectory;

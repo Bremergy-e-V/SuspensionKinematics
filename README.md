@@ -522,6 +522,23 @@ is (for a workbook measured from a chassis datum), and a wheel axis point is
 carried on the axis the angles give. If your ground is `z = 0` you can delete the
 patch points altogether.
 
+### Springs, anti-roll bar and tyres
+
+**Linkage ▸ Springs and Tyres** states, per axle, the spring rate (N/mm, along the
+damper the spring sits on), the anti-roll bar's torsional rate (Nm/deg, at the
+bar) and the tyre's vertical rate (N/mm). With them a bump or a roll sweep also
+plots what is carried: **Spring force change**, **Anti-roll bar torque**, **Wheel
+load change** and **Tyre deflection**, all as changes from the design position,
+which is the car at its static ride height.
+
+**Include tyre stiffness**, in the sweep parameters, lets the tyres give way. The
+sweep's input is then the body against the *road* -- a bump raises the road under
+both contact patches, a roll tilts it -- and springs, bar and tyres share that
+movement out, so the wheel travel is a result rather than the input. With it off,
+or on an axle with no rates, every sweep is the purely kinematic one it always
+was. A roll is still a pure roll at a fixed ride height: the body does not heave
+to keep the axle's total load constant.
+
 ### Signs, and comparing with Lotus
 
 Every measure has been checked against an independent solve of the same car

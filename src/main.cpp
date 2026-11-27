@@ -1,11 +1,11 @@
 #include "app/AppController.h"
-#include "app/AppLogo.h"
 #include "app/MainWindow.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFileInfo>
+#include <QIcon>
 #include <QImage>
 #include <QSurfaceFormat>
 #include <QTimer>
@@ -26,10 +26,13 @@ int main(int argc, char* argv[])
     QApplication::setOrganizationName(QStringLiteral("Bremergy"));
     QApplication::setApplicationName(QStringLiteral("SuspensionKinematics"));
     QApplication::setApplicationVersion(QStringLiteral(SUSPKIN_VERSION));
+    // Every window's icon. The desktop file name is what lets a Wayland
+    // compositor, which takes no icon from a window, find the installed one.
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/appicon/suspkin.png")));
+    QGuiApplication::setDesktopFileName(QStringLiteral("suspkin"));
     // Between one project and the next there is a moment with no window open,
     // and Qt would take that for the end of the run.
     QApplication::setQuitOnLastWindowClosed(false);
-    QApplication::setWindowIcon(suspkin::appLogo());
 
     QCommandLineParser parser;
     parser.setApplicationDescription(

@@ -118,6 +118,13 @@ SweepParametersDialog::SweepParametersDialog(QWidget* parent) : QDialog(parent)
                               "chassis stays put. The curve and the readout still belong to the "
                               "axle chosen in the analysis panel."));
     commonForm->addRow(QString(), m_allAxles);
+    m_tyreCompliance = new QCheckBox(tr("Include tyre stiffness"), this);
+    m_tyreCompliance->setToolTip(
+        tr("Let the tyres give way. A bump or a roll is then the body against the road, and "
+           "the suspension travels only as far as its springs, its anti-roll bar and its "
+           "tyres share that out. It takes an axle whose rates are stated, in Linkage > "
+           "Springs and Tyres; any other is swept with rigid tyres."));
+    commonForm->addRow(QString(), m_tyreCompliance);
     layout->addWidget(commonGroup);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
@@ -141,6 +148,9 @@ SweepParametersDialog::SweepParametersDialog(QWidget* parent) : QDialog(parent)
     });
     connect(m_allAxles, &QCheckBox::toggled, this, [this] {
         if (!m_updating) emit movesAllAxlesChanged();
+    });
+    connect(m_tyreCompliance, &QCheckBox::toggled, this, [this] {
+        if (!m_updating) emit tyreComplianceChanged();
     });
 
     setSettings(SweepSettings{});
@@ -209,6 +219,18 @@ void SweepParametersDialog::setMovesAllAxles(bool all)
 {
     m_updating = true;
     m_allAxles->setChecked(all);
+    m_updating = false;
+}
+
+bool SweepParametersDialog::includesTyreCompliance() const
+{
+    return m_tyreCompliance->isChecked();
+}
+
+void SweepParametersDialog::setIncludesTyreCompliance(bool included)
+{
+    m_updating = true;
+    m_tyreCompliance->setChecked(included);
     m_updating = false;
 }
 

@@ -434,9 +434,11 @@ void PlotWidget::paintEvent(QPaintEvent*)
                                                    sweepMeasureUnit(m_measure)));
     // Every axle is swept with one spec, so the first says what the input is.
     const SweepKind kind = leadingResult()->kind;
+    const bool tyresDeflect = leadingResult()->tyresDeflect;
     painter.drawText(QRectF(area.left(), rect().bottom() - 18.0, area.width(), 16.0),
                      Qt::AlignHCenter | Qt::AlignVCenter,
-                     QStringLiteral("%1 [%2]").arg(sweepInputLabel(kind), sweepInputUnit(kind)));
+                     QStringLiteral("%1 [%2]").arg(sweepInputLabel(kind, tyresDeflect),
+                                                   sweepInputUnit(kind)));
 }
 
 void PlotWidget::mousePressEvent(QMouseEvent* event)

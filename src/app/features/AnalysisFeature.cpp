@@ -63,6 +63,7 @@ public:
         simulation.animating = panel->animating();
         simulation.animationSeconds = panel->animationSeconds();
         simulation.allAxles = panel->movesAllAxles();
+        simulation.tyreCompliance = panel->includesTyreCompliance();
         simulation.parametersOpen = panel->parametersVisible();
     }
 
@@ -83,6 +84,7 @@ public:
         panel->setSides(simulation.sides);
         panel->setPosition(simulation.position);
         panel->setMovesAllAxles(simulation.allAxles);
+        panel->setIncludesTyreCompliance(simulation.tyreCompliance);
         panel->setAnimationSeconds(simulation.animationSeconds);
         panel->setParametersVisible(simulation.parametersOpen);
         panel->setSimulating(simulation.active);

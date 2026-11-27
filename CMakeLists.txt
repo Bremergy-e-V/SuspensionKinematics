@@ -140,10 +140,8 @@ add_library(suspkin_core STATIC
     src/model/GraphSolver.cpp
     src/model/SuspensionSolver.h
     src/model/SuspensionSolver.cpp
-    # The forces the motion comes to: spring, bar and tyre rates over the
-    # solved installation ratios, by virtual work. Pure, like the solve.
-    src/model/SpringLoads.h
-    src/model/SpringLoads.cpp
+    src/model/Compliance.h
+    src/model/Compliance.cpp
     src/model/Sweep.h
     src/model/Sweep.cpp
     src/model/Simulation.h
@@ -250,8 +248,6 @@ endif()
 # ---------------------------------------------------------------------------
 qt_add_executable(suspkin
     src/main.cpp
-    src/app/AppLogo.h
-    src/app/AppLogo.cpp
     src/app/MainWindow.h
     src/app/MainWindow.cpp
     src/app/framework/AppContext.h
@@ -293,7 +289,6 @@ qt_add_executable(suspkin
     src/app/features/GenerateFeature.cpp
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
-    src/app/features/SpringsFeature.cpp
     src/app/features/CollisionFeature.cpp
     src/app/features/RockerFeature.cpp
     src/app/features/TemplateEditorFeature.cpp
@@ -357,8 +352,8 @@ qt_add_executable(suspkin
     src/app/SteeringDialog.cpp
     src/app/StaticAnglesDialog.h
     src/app/StaticAnglesDialog.cpp
-    src/app/SpringsDialog.h
-    src/app/SpringsDialog.cpp
+    src/app/SpringRatesDialog.h
+    src/app/SpringRatesDialog.cpp
     src/app/CollisionDialog.h
     src/app/CollisionDialog.cpp
     # What the program is made of and under what terms. Help > Licenses, and
@@ -455,7 +450,7 @@ set(SUSPKIN_ICON_NAMES
     folder-open folder-plus folder-search forms history info-circle info-square-rounded
     layout-dashboard license line list-details logout refresh restore row-insert-bottom
     row-remove ruler-measure sphere steering-wheel table table-export table-minus table-plus
-    tag template trash triangle triangles vector wand wave-sine wheel x)
+    tag template trash triangle triangles vector wand wheel x)
 set(SUSPKIN_ICONS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons")
 set(SUSPKIN_ICONS "")
 foreach(_icon IN LISTS SUSPKIN_ICON_NAMES)
@@ -494,23 +489,25 @@ qt_add_resources(suspkin "license_icons"
     FILES "${SUSPKIN_ICONS_DIR}/LICENSE-tabler.txt"
 )
 
-# The application's logo: the drawing the window icon is rendered from. The
-# exe's own icon is the same drawing, rasterised into packaging/windows/
-# suspkin.ico (and suspkin.png for Linux) and committed beside it.
-qt_add_resources(suspkin "logo"
-    PREFIX "/logo"
-    BASE "resources/logo"
-    FILES resources/logo/suspkin.svg
-)
-if(WIN32)
-    target_sources(suspkin PRIVATE packaging/windows/suspkin.rc)
-endif()
-
 qt_add_resources(suspkin "icons"
     PREFIX "/icons"
     BASE "${SUSPKIN_ICONS_DIR}"
     FILES ${SUSPKIN_ICONS}
 )
+
+# The application's own icon, as distinct from the command icons above: what a
+# window, a taskbar and a launcher show. The sizes are committed rather than
+# made at build time, so nothing new is needed to build.
+set(SUSPKIN_APPICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources/appicon")
+qt_add_resources(suspkin "appicon"
+    PREFIX "/appicon"
+    BASE "${SUSPKIN_APPICON_DIR}"
+    FILES "${SUSPKIN_APPICON_DIR}/suspkin.png"
+)
+if(WIN32)
+    # What Explorer shows for the exe itself, which no Qt call can set.
+    target_sources(suspkin PRIVATE packaging/windows/suspkin.rc)
+endif()
 
 set_target_properties(suspkin PROPERTIES WIN32_EXECUTABLE ON)
 
@@ -565,8 +562,14 @@ endif()
 if(UNIX AND NOT APPLE)
     install(FILES packaging/linux/suspkin.desktop
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
-    install(FILES packaging/linux/suspkin.png
-            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps)
+    # The launcher's icon, by the name the desktop file asks for.
+    foreach(_size 48 64 128 256)
+        install(FILES "${SUSPKIN_APPICON_DIR}/suspkin-${_size}.png"
+                DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_size}x${_size}/apps
+                RENAME suspkin.png)
+    endforeach()
+    install(FILES "${SUSPKIN_APPICON_DIR}/suspkin.png"
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/512x512/apps)
 endif()
 
 if(WIN32)

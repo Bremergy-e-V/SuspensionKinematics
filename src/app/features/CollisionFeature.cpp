@@ -89,7 +89,8 @@ private:
         for (int i = 0; i < std::max(2, spec.steps); ++i) {
             const double input = spec.inputAt(i);
             SimulationPose pose =
-                simulation.poseAt(request.axle, spec.kind, input, spec.rackTravel, true);
+                simulation.poseAt(request.axle, spec.kind, input, spec.rackTravel, true,
+                                  spec.tyreCompliance);
             // A roll is solved with the road tilted under a body that stays
             // put, which is the frame the chassis mesh is in.
             pose.bodyMotion.reset();

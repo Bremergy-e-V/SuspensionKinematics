@@ -58,22 +58,20 @@ public:
     ///
     /// @p steeringNote is what the window has to say about steering: that a
     /// template which predates the role was filled in, or that one says nothing
-    /// and every axle is therefore steerable. It is passed in rather than
+    /// and every axle is therefore steerable. @p rates is each axle's spring,
+    /// bar and tyre rates, by corner token. The note is passed in rather than
     /// bolted on afterwards because a table with no complete axle in it
     /// replaces the note entirely, so the two have to be decided together.
     ///
     /// @p config, when given, is what each corner is made of: what joins what at
     /// every point (see @ref AxleSolver::build). Without it every corner is
     /// solved from the template's roles.
-    ///
-    /// @p springs, by corner token, is what each axle is sprung with; an axle
-    /// with none is solved for its kinematics alone.
     static Simulation build(const LinkageTemplate& templ, const HardpointTable& table,
                             const MirrorSpec& mirror,
                             const QHash<QString, StaticAlignment>& alignment,
                             const QString& steeringNote = QString(),
                             const HardpointConfigMap* config = nullptr,
-                            const QHash<QString, AxleSprings>& springs = {});
+                            const QHash<QString, AxleRates>& rates = {});
 
     bool isEmpty() const { return m_axles.empty(); }
     const std::vector<AxleSolver>& axles() const { return m_axles; }
@@ -109,8 +107,11 @@ public:
     /// is the exception whatever is asked for: a rack belongs to one axle, and
     /// pushing a rear toe link with it would be inventing a rear-steer this car
     /// has not got.
+    ///
+    /// @p tyreCompliance lets the tyres give way (@ref SweepSpec::tyreCompliance),
+    /// on every axle that has the rates for it.
     SimulationPose poseAt(const QString& token, SweepKind kind, double input, double rackTravel,
-                          bool moveAllAxles) const;
+                          bool moveAllAxles, bool tyreCompliance = false) const;
 
 private:
     std::vector<AxleSolver> m_axles;

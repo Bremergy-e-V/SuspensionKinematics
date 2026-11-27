@@ -373,6 +373,16 @@ private slots:
     void eachKindKeepsItsOwnTravelInItsOwnUnit();
     void anIncrementThatWouldNeverEndIsBoundedNotObeyed();
 
+    // ---- springs, bar and tyres ----------------------------------------
+
+    void tyresThatDoNotGiveLeaveARollSweepAsItWas();
+    void aBumpIsSharedBetweenTheSpringAndTheTyre();
+    void everyPatchCarriesWhatItsTyreMakes();
+    void theBarDoesNothingInBumpAndStiffensRoll();
+    void onePositionSettlesWhereTheSweepDoes();
+    void ratesPutForcesInARigidSweepAndColumnsInItsCsv();
+    void anAxleWithoutRatesIsSweptRigidAndSaysSo();
+
     // ---- how the numbers are shown --------------------------------------
 
     void aCurveIsNotStretchedPastWhatItsUnitCanSay();
@@ -384,12 +394,6 @@ private slots:
     void aDropLinkNeedNotHangOffARocker();
     void aDropLinkOnTheRockerNeedsARocker();
     void aWorkbookWithTheOldAntiRollNamesSolvesUnderTheNewTemplate();
-
-    // ---- springs, the bar and the tyre ----------------------------------
-    void theSpringPutsItsRateOnTheWheelThroughTheInstallationRatio();
-    void theTyreTakesUpTheLoadInSeriesWithTheSpring();
-    void theBarsRollMomentIsWhatItsTwistCostsPerDegree();
-    void anAxleWithoutSpringsHasNoLoadsToPlot();
 };
 
 void TestKinematics::rotatingAboutAnAxisKeepsTheDistanceToIt()
@@ -2171,142 +2175,212 @@ void TestKinematics::aWorkbookWithTheOldAntiRollNamesSolvesUnderTheNewTemplate()
     }
 }
 
+// ---------------------------------------------------------------------------
+// Springs, bar and tyres
+// ---------------------------------------------------------------------------
+
 namespace {
 
-AxleSolver sprungFrontAxle(const AxleSprings& springs)
+/// A front axle the way a small single-seater has one: N/mm, Nm/deg, N/mm.
+AxleRates sprungRates(double bar = 150.0, double tyre = 120.0)
 {
-    AxleSolver axle =
-        AxleSolver::build(cornerMechanism(), frontCorner(), frontAxle(), MirrorSpec{});
-    axle.setSprings(springs);
-    return axle;
+    return AxleRates{ 40.0, bar, tyre };
 }
 
-const AxleSample& designSampleOf(const SweepResult& result)
+AxleSolver sprungAxle(const AxleRates& rates)
 {
-    const AxleSample* design = result.nearest(0.0);
-    Q_ASSERT(design && std::abs(design->input) < 1e-9);
-    return *design;
+    return AxleSolver::build(cornerMechanism(), frontCorner(), frontAxle(), MirrorSpec{}, false,
+                             std::nullopt, {}, rates);
+}
+
+SweepResult compliantSweep(const AxleSolver& axle, SweepKind kind, double reach)
+{
+    SweepSpec spec;
+    spec.kind = kind;
+    spec.from = -reach;
+    spec.to = reach;
+    spec.steps = 21;
+    spec.tyreCompliance = true;
+    return runSweep(axle, spec);
 }
 
 } // namespace
 
-void TestKinematics::theSpringPutsItsRateOnTheWheelThroughTheInstallationRatio()
+void TestKinematics::tyresThatDoNotGiveLeaveARollSweepAsItWas()
 {
-    AxleSprings springs;
-    springs.springRate = 30.0;
-    springs.staticLoad = 1000.0;
-    const SweepResult result = bumpSweep(sprungFrontAxle(springs));
-    QVERIFY(result.sprung);
+    const AxleSolver rigidAxle =
+        AxleSolver::build(cornerMechanism(), frontCorner(), frontAxle(), MirrorSpec{});
+    const SweepResult rigid = rollSweep(rigidAxle);
+    const SweepResult stiff =
+        compliantSweep(sprungAxle(sprungRates(150.0, 1e9)), SweepKind::Roll, 2.0);
 
-    // At design the wheel carries exactly its static load: the spring is
-    // preloaded to it.
-    const AxleSample& design = designSampleOf(result);
-    QVERIFY(design.leftLoad.valid);
-    QVERIFY(std::abs(design.leftLoad.load - 1000.0) < 1e-6);
-    QVERIFY(std::abs(design.leftLoad.loadChange) < 1e-9);
-
-    for (const AxleSample& sample : result.samples) {
-        const double ratio = sample.leftInstallationRatio;
-        QVERIFY(std::abs(sample.leftLoad.wheelRate - 30.0 * ratio * ratio) < 1e-9);
-        QVERIFY(std::abs(sample.leftLoad.barForce) < 1e-12);
+    QCOMPARE(stiff.samples.size(), rigid.samples.size());
+    for (std::size_t i = 0; i < rigid.samples.size(); ++i) {
+        QVERIFY(stiff.samples[i].left.valid);
+        QVERIFY(stiff.samples[i].loads.valid);
+        QVERIFY(std::abs(stiff.samples[i].left.camber - rigid.samples[i].left.camber) < 1e-5);
+        QVERIFY(std::abs(stiff.samples[i].right.wheelTravel - rigid.samples[i].right.wheelTravel)
+                < 1e-4);
+        QVERIFY(std::abs(stiff.samples[i].rollCenterHeight - rigid.samples[i].rollCenterHeight)
+                < 1e-3);
     }
-
-    // And the load a bump adds is the wheel rate over it, plus what the
-    // preload does as the ratio changes under it -- a rising rate is not only
-    // the spring's.
-    const std::size_t middle = std::size_t(&design - result.samples.data());
-    const AxleSample& bumped = result.samples[middle + 1];
-    const double travel = bumped.left.wheelTravel - design.left.wheelTravel;
-    const double preload = 1000.0 / design.leftInstallationRatio;
-    const double expected =
-        0.5 * (design.leftLoad.wheelRate + bumped.leftLoad.wheelRate) * travel
-        + preload * (bumped.leftInstallationRatio - design.leftInstallationRatio);
-    QVERIFY2(std::abs(bumped.leftLoad.loadChange - expected) < 0.03 * std::abs(expected),
-             qPrintable(QStringLiteral("%1 vs %2").arg(bumped.leftLoad.loadChange).arg(expected)));
-    QVERIFY(bumped.leftLoad.loadChange > 0.0);
 }
 
-void TestKinematics::theTyreTakesUpTheLoadInSeriesWithTheSpring()
+void TestKinematics::aBumpIsSharedBetweenTheSpringAndTheTyre()
 {
-    AxleSprings springs;
-    springs.springRate = 30.0;
-    springs.tyreRate = 200.0;
-    springs.staticLoad = 1000.0;
-    const SweepResult result = bumpSweep(sprungFrontAxle(springs));
+    const AxleRates rates = sprungRates();
+    const SweepResult sweep = compliantSweep(sprungAxle(rates), SweepKind::Bump, 5.0);
+    QVERIFY(sweep.warnings.isEmpty());
 
-    const AxleSample& design = designSampleOf(result);
-    QVERIFY(std::abs(design.leftLoad.tyreDeflection - 5.0) < 1e-6);
-    QVERIFY(std::abs(design.leftLoad.travelWithTyre) < 1e-6);
+    const AxleSample& top = sweep.samples.back();
+    QVERIFY(top.left.valid && top.loads.valid);
+    QCOMPARE(top.input, 5.0);
 
-    for (const AxleSample& sample : result.samples) {
-        const WheelLoad& load = sample.leftLoad;
-        QVERIFY(load.tyreValid);
-        QVERIFY(std::abs(load.tyreDeflection - load.load / 200.0) < 1e-9);
-        QVERIFY(std::abs(load.travelWithTyre
-                         - (sample.left.wheelTravel + load.loadChange / 200.0))
-                < 1e-9);
-        const double series = load.wheelRate * 200.0 / (load.wheelRate + 200.0);
-        QVERIFY(std::abs(load.rideRate - series) < 1e-9);
-        // In bump the tyre squashes as well, so the body comes down further
-        // than the wheel moves in its travel.
-        if (sample.left.wheelTravel > 1.0) QVERIFY(load.travelWithTyre > sample.left.wheelTravel);
+    // Two springs in series: the wheel's own rate is the spring's through the
+    // installation ratio twice, and the road's rise is split in proportion.
+    const double ratio = top.leftInstallationRatio;
+    QVERIFY(ratio > 0.1);
+    const double wheelRate = rates.springRate * ratio * ratio;
+    const double expected = top.input * wheelRate / (wheelRate + rates.tyreRate);
+    QVERIFY(top.loads.leftTyreDeflection > 0.0);
+    QVERIFY(std::abs(top.loads.leftTyreDeflection - expected) < 0.03 * expected);
+
+    // What the tyre did not take, the suspension travelled -- and no more.
+    QVERIFY(top.left.wheelTravel < top.input);
+    QVERIFY(std::abs(top.left.wheelTravel + top.loads.leftTyreDeflection - top.input) < 0.05);
+    // The patch is drawn on the road, which is where the input put it.
+    QVERIFY(std::abs(top.left.contactPatchRise - top.input) < 1e-9);
+    // A bump loads both wheels alike, and unloads them in rebound.
+    QVERIFY(std::abs(top.loads.leftWheelLoad - top.loads.rightWheelLoad) < 1e-3);
+    QVERIFY(top.loads.leftSpringForce > 0.0);
+    QVERIFY(sweep.samples.front().loads.leftWheelLoad < 0.0);
+}
+
+void TestKinematics::everyPatchCarriesWhatItsTyreMakes()
+{
+    const AxleRates rates = sprungRates();
+    for (const SweepKind kind : { SweepKind::Bump, SweepKind::Roll }) {
+        const SweepResult sweep =
+            compliantSweep(sprungAxle(rates), kind, kind == SweepKind::Roll ? 2.0 : 20.0);
+        for (const AxleSample& sample : sweep.samples) {
+            QVERIFY(sample.loads.valid);
+            QVERIFY(std::abs(sample.loads.leftWheelLoad
+                             - rates.tyreRate * sample.loads.leftTyreDeflection)
+                    < 1e-3);
+            QVERIFY(std::abs(sample.loads.rightWheelLoad
+                             - rates.tyreRate * sample.loads.rightTyreDeflection)
+                    < 1e-3);
+        }
     }
+}
+
+void TestKinematics::theBarDoesNothingInBumpAndStiffensRoll()
+{
+    const SweepResult bumpWith = compliantSweep(sprungAxle(sprungRates(150.0)), SweepKind::Bump, 20.0);
+    const SweepResult bumpWithout = compliantSweep(sprungAxle(sprungRates(0.0)), SweepKind::Bump, 20.0);
+    for (std::size_t i = 0; i < bumpWith.samples.size(); ++i) {
+        QVERIFY(std::abs(bumpWith.samples[i].loads.antiRollTorque) < 1e-6);
+        QVERIFY(std::abs(bumpWith.samples[i].loads.leftTyreDeflection
+                         - bumpWithout.samples[i].loads.leftTyreDeflection)
+                < 1e-6);
+    }
+
+    const AxleSample with =
+        compliantSweep(sprungAxle(sprungRates(150.0)), SweepKind::Roll, 2.0).samples.back();
+    const AxleSample without =
+        compliantSweep(sprungAxle(sprungRates(0.0)), SweepKind::Roll, 2.0).samples.back();
+    QVERIFY(with.loads.valid && without.loads.valid);
+    // Positive roll drops the road under the left wheel: it unloads, the right
+    // one loads, and a bar makes more of both.
+    QVERIFY(without.loads.leftWheelLoad < 0.0);
+    QVERIFY(without.loads.rightWheelLoad > 0.0);
+    QVERIFY(with.loads.rightWheelLoad > without.loads.rightWheelLoad + 1.0);
+    QVERIFY(with.loads.rightTyreDeflection > without.loads.rightTyreDeflection);
+    QVERIFY(std::abs(with.loads.antiRollTorque) > 1.0);
+    // The stiffer the axle, the more of the roll its tyres take, and the less
+    // its suspension travels.
+    QVERIFY(std::abs(with.right.wheelTravel) < std::abs(without.right.wheelTravel));
+    QVERIFY(std::abs(with.antiRollTwist) < std::abs(without.antiRollTwist));
+}
+
+void TestKinematics::onePositionSettlesWhereTheSweepDoes()
+{
+    const AxleSolver axle = sprungAxle(sprungRates());
+    const SweepResult sweep = compliantSweep(axle, SweepKind::Roll, 2.0);
+    const AxleSample& swept = sweep.samples.back();
+    const AxleSample alone = sampleAxleAt(axle, SweepKind::Roll, swept.input, 0.0, true);
+
+    QVERIFY(alone.loads.valid);
+    QVERIFY(std::abs(alone.left.camber - swept.left.camber) < 1e-6);
+    QVERIFY(std::abs(alone.left.camberToGround - swept.left.camberToGround) < 1e-6);
+    QVERIFY(std::abs(alone.loads.rightTyreDeflection - swept.loads.rightTyreDeflection) < 1e-6);
+    QVERIFY(std::abs(alone.rollCenterHeight - swept.rollCenterHeight) < 1e-4);
+    QVERIFY(std::abs(alone.leftInstallationRatio - swept.leftInstallationRatio) < 1e-2);
+}
+
+void TestKinematics::ratesPutForcesInARigidSweepAndColumnsInItsCsv()
+{
+    const AxleSolver plain =
+        AxleSolver::build(cornerMechanism(), frontCorner(), frontAxle(), MirrorSpec{});
+    const SweepResult rigid = bumpSweep(plain);
+    const SweepResult sprung = bumpSweep(sprungAxle(sprungRates()));
+
+    // With the tyres rigid the rates move nothing: only the forces are new.
+    QVERIFY(!rigid.hasLoads);
+    QVERIFY(sprung.hasLoads);
+    for (std::size_t i = 0; i < rigid.samples.size(); ++i) {
+        QCOMPARE(sprung.samples[i].left.camber, rigid.samples[i].left.camber);
+        QCOMPARE(sprung.samples[i].left.wheelTravel, rigid.samples[i].left.wheelTravel);
+        QVERIFY(!rigid.samples[i].loads.valid);
+        QVERIFY(sprung.samples[i].loads.valid);
+        QCOMPARE(sprung.samples[i].loads.leftTyreDeflection, 0.0);
+    }
+    QVERIFY(sprung.samples.back().loads.leftWheelLoad > 100.0);
 
     double value = 0.0;
-    QVERIFY(sweepMeasureValue(design, SweepMeasure::TyreDeflection, true, &value));
-    QVERIFY(sweepMeasureAvailable(result, SweepMeasure::RideRate));
+    QVERIFY(!sweepMeasureValue(rigid.samples.back(), SweepMeasure::WheelLoad, true, &value));
+    QVERIFY(sweepMeasureValue(sprung.samples.back(), SweepMeasure::WheelLoad, true, &value));
+    QCOMPARE(value, sprung.samples.back().loads.leftWheelLoad);
+    QCOMPARE(sweepMeasureFromKey(sweepMeasureKey(SweepMeasure::TyreDeflection)),
+             SweepMeasure::TyreDeflection);
+
+    const QByteArray plainCsv = sweepToCsv(rigid);
+    const QByteArray sprungCsv = sweepToCsv(sprung);
+    QVERIFY(!plainCsv.contains("wheel_load"));
+    const QList<QByteArray> lines = sprungCsv.split('\n');
+    QVERIFY(lines.first().endsWith("spring_force_right [N],anti_roll_torque [Nm]"));
+    // Every row as wide as the header, and the old columns exactly as they were.
+    QCOMPARE(lines.at(1).count(','), lines.first().count(','));
+    QVERIFY(lines.first().startsWith(plainCsv.split('\n').first()));
+    QCOMPARE(sweepsToCsv({ sprung }, SweepSides::Both), sprungCsv);
 }
 
-void TestKinematics::theBarsRollMomentIsWhatItsTwistCostsPerDegree()
+void TestKinematics::anAxleWithoutRatesIsSweptRigidAndSaysSo()
 {
-    AxleSprings springs;
-    springs.antiRollRate = 100.0; // N·m per degree of twist
-    const SweepResult result = rollSweep(sprungFrontAxle(springs));
-    QVERIFY(result.sprung);
-
-    // M = dU/d(phi) for U = k theta^2 / 2, with every angle in degrees: the
-    // roll moment the wheel loads make about the centreline is what the bar's
-    // twist costs per degree of roll.
-    for (std::size_t i = 1; i + 1 < result.samples.size(); ++i) {
-        const AxleSample& sample = result.samples[i];
-        QVERIFY(sample.hasAntiRoll);
-        QVERIFY(sample.rollMomentValid);
-        const AxleSample& before = result.samples[i - 1];
-        const AxleSample& after = result.samples[i + 1];
-        const double twistRate =
-            (after.antiRollTwist - before.antiRollTwist) / (after.input - before.input);
-        const double expected = springs.antiRollRate * sample.antiRollTwist * twistRate;
-        if (std::abs(sample.input) < 1e-9) {
-            QVERIFY(std::abs(sample.rollMoment) < 1e-6);
-            continue;
-        }
-        QVERIFY2(std::abs(sample.rollMoment - expected) < 0.03 * std::abs(expected),
-                 qPrintable(QStringLiteral("at %1: %2 vs %3")
-                                .arg(sample.input)
-                                .arg(sample.rollMoment)
-                                .arg(expected)));
-        // It resists the roll.
-        QVERIFY(sample.rollMoment * sample.input > 0.0);
-    }
-}
-
-void TestKinematics::anAxleWithoutSpringsHasNoLoadsToPlot()
-{
-    const AxleSolver axle =
+    const AxleSolver plain =
         AxleSolver::build(cornerMechanism(), frontCorner(), frontAxle(), MirrorSpec{});
-    const SweepResult result = bumpSweep(axle);
-    QVERIFY(!result.sprung);
-    for (const SweepMeasure measure :
-         { SweepMeasure::SpringForce, SweepMeasure::WheelRate, SweepMeasure::WheelLoad,
-           SweepMeasure::TyreDeflection, SweepMeasure::RideRate, SweepMeasure::TravelWithTyre,
-           SweepMeasure::RollMoment })
-        QVERIFY(!sweepMeasureAvailable(result, measure));
-    // The CSV of an unsprung axle is what it always was.
-    QVERIFY(!sweepToCsv(result).contains("wheel_load"));
+    QVERIFY(!plain.canDeflectTyres());
+    QVERIFY(sprungAxle(sprungRates()).canDeflectTyres());
+    // A spring with no tyre rate is forces without a tyre to give way.
+    QVERIFY(!sprungAxle(sprungRates(150.0, 0.0)).canDeflectTyres());
 
-    AxleSprings springs;
-    springs.springRate = 30.0;
-    QVERIFY(sweepToCsv(bumpSweep(sprungFrontAxle(springs))).contains("wheel_load_left [N]"));
+    const SweepResult asked = compliantSweep(plain, SweepKind::Roll, 2.0);
+    const SweepResult rigid = rollSweep(plain);
+    QCOMPARE(asked.warnings.size(), rigid.warnings.size() + 1);
+    QVERIFY(asked.warnings.last().contains(QStringLiteral("rigid")));
+    QCOMPARE(sweepToCsv(asked), sweepToCsv(rigid));
+
+    // Steering moves no spring, so there is nothing to give way and nothing
+    // to warn about.
+    SweepSpec steer;
+    steer.kind = SweepKind::Steer;
+    steer.from = -10.0;
+    steer.to = 10.0;
+    steer.steps = 5;
+    steer.tyreCompliance = true;
+    const SweepResult steered = runSweep(sprungAxle(sprungRates()), steer);
+    QVERIFY(!steered.hasLoads);
+    QVERIFY(steered.warnings.isEmpty());
 }
 
 QTEST_MAIN(TestKinematics)

@@ -49,10 +49,10 @@ QString sweepInputUnit(SweepKind kind)
     return kind == SweepKind::Roll ? QStringLiteral("deg") : QStringLiteral("mm");
 }
 
-QString sweepInputLabel(SweepKind kind)
+QString sweepInputLabel(SweepKind kind, bool tyresDeflect)
 {
     switch (kind) {
-    case SweepKind::Bump: return tr("Wheel travel");
+    case SweepKind::Bump: return tyresDeflect ? tr("Body travel to road") : tr("Wheel travel");
     case SweepKind::Roll: return tr("Body roll");
     case SweepKind::Steer: return tr("Rack travel");
     }
@@ -62,7 +62,7 @@ QString sweepInputLabel(SweepKind kind)
 bool SweepSpec::operator==(const SweepSpec& other) const
 {
     return kind == other.kind && from == other.from && to == other.to && steps == other.steps
-           && rackTravel == other.rackTravel;
+           && rackTravel == other.rackTravel && tyreCompliance == other.tyreCompliance;
 }
 
 double SweepSpec::inputAt(int index) const
@@ -194,9 +194,11 @@ AxleSolver AxleSolver::build(const MechanismTemplate& mechanism, const CornerSpe
                              const HardpointTable& table, const MirrorSpec& mirror,
                              bool steeringDeclared,
                              const std::optional<StaticAlignment>& alignment,
-                             const LinkageDescription& description)
+                             const LinkageDescription& description,
+                             const std::optional<AxleRates>& rates)
 {
     AxleSolver axle;
+    axle.m_rates = rates;
     axle.m_token = corner.token;
     axle.m_label = corner.label.isEmpty() ? corner.token : corner.label;
 
@@ -305,6 +307,15 @@ bool AxleSolver::isSteered() const
     // that drives one drives the other, and a half-mirrored table should not
     // read as half a steering system.
     return (m_left && m_left->isSteered()) || (m_right && m_right->isSteered());
+}
+
+bool AxleSolver::canDeflectTyres() const
+{
+    if (isEmpty() || !m_rates || !m_rates->hasSpring() || !m_rates->hasTyre()) return false;
+    // The spring is on the damper. A side without one has nothing to push
+    // back with, and half an axle sprung is not an axle in equilibrium.
+    return (!m_left || m_left->designPose().hasDamper)
+           && (!m_right || m_right->designPose().hasDamper);
 }
 
 namespace {
@@ -425,6 +436,31 @@ std::optional<SweepInterval> assembledInterval(const SweepResult& result)
 
 namespace {
 
+/// How far the road under @p solver's contact patch has risen against the
+/// body when the body has rolled @p rollDeg.
+///
+/// The body rolls, so in body coordinates the ground tilts the other way and
+/// each contact patch sits at a new height on it. Positive roll is a right-hand
+/// rotation about x, which drops the left-hand contact patch and so puts the
+/// left wheel into droop.
+double rolledGroundRise(const CornerSolver& solver, double rollDeg)
+{
+    return -solver.designPose().contactPatch.y * std::tan(rollDeg * kDegToRad);
+}
+
+/// @p pose's camber against the road of a body rolled @p rollDeg.
+///
+/// That tilted ground is z = -y tan(roll), whose upward normal is what the
+/// spin axis is read against. Camber against it is what the tyre sees, and
+/// what a picture of the car rolled on a level road shows; camber against the
+/// body is what the suspension did, and the two part by the whole roll angle.
+double camberToRolledGround(const CornerPose& pose, double rollDeg)
+{
+    const double angle = rollDeg * kDegToRad;
+    const Vec3 up(0.0, std::sin(angle), std::cos(angle));
+    return -std::asin(std::clamp(dot(pose.spinAxis, up), -1.0, 1.0)) * kRadToDeg;
+}
+
 /// One corner posed for one point of one kind of sweep.
 CornerPose poseFor(const CornerSolver& solver, SweepKind kind, double input, double rackTravel,
                    const CornerPose* previous)
@@ -433,21 +469,9 @@ CornerPose poseFor(const CornerSolver& solver, SweepKind kind, double input, dou
     case SweepKind::Bump:
         return solver.poseAtWheelTravel(input, rackTravel, previous);
     case SweepKind::Roll: {
-        // The body rolls, so in body coordinates the ground tilts the other way
-        // and each contact patch sits at a new height on it. Positive roll is a
-        // right-hand rotation about x, which drops the left-hand contact patch
-        // and so puts the left wheel into droop.
-        const double angle = input * kDegToRad;
-        const double y = solver.designPose().contactPatch.y;
-        CornerPose pose =
-            solver.poseAtContactPatchRise(-y * std::tan(angle), rackTravel, previous);
-        // That tilted ground is z = -y tan(roll), whose upward normal is this.
-        // Camber against it is what the tyre sees, and what a picture of the
-        // car rolled on a level road shows; camber against the body is what
-        // the suspension did, and the two part by the whole roll angle.
-        const Vec3 up(0.0, std::sin(angle), std::cos(angle));
-        pose.camberToGround =
-            -std::asin(std::clamp(dot(pose.spinAxis, up), -1.0, 1.0)) * kRadToDeg;
+        CornerPose pose = solver.poseAtContactPatchRise(rolledGroundRise(solver, input),
+                                                        rackTravel, previous);
+        pose.camberToGround = camberToRolledGround(pose, input);
         return pose;
     }
     case SweepKind::Steer:
@@ -548,63 +572,113 @@ double installationRatio(const CornerPose& before, const CornerPose& after)
     return (before.damperLength - after.damperLength) / travel;
 }
 
-/// Degrees the bar's arm turns per millimetre the wheel rises, the same way.
-double barRatio(const CornerPose& before, const CornerPose& after)
+AxleSides sidesOf(const AxleSolver& axle)
 {
-    if (!before.valid || !after.valid || !before.hasAntiRoll || !after.hasAntiRoll) return 0.0;
-    const double travel = after.wheelTravel - before.wheelTravel;
-    if (std::abs(travel) < 1e-9) return 0.0;
-    return (after.antiRollArmAngle - before.antiRollArmAngle) * kRadToDeg / travel;
+    return AxleSides{ axle.left() ? &*axle.left() : nullptr,
+                      axle.right() ? &*axle.right() : nullptr };
 }
 
-/// What each side's loads are read against: its design pose, and the
-/// installation ratio there, which the static load's preload is set by.
-struct SpringDesign {
-    const CornerPose* left = nullptr;
-    const CornerPose* right = nullptr;
-    double leftRatio = 0.0;
-    double rightRatio = 0.0;
-};
-
-/// The design poses, with the ratios as the sample at input 0 measures them --
-/// the same difference, so the design position reads back exactly the static
-/// load rather than that load times the difference between two estimates.
-SpringDesign springDesignOf(const AxleSolver& axle, const AxleSample& atDesign)
+/// Whether a @p kind sweep of @p axle lets the tyres give way. Steering moves
+/// no spring, so there is nothing for a tyre to answer.
+bool deflectsTyres(const AxleSolver& axle, SweepKind kind, bool tyreCompliance)
 {
-    SpringDesign design;
-    if (axle.left()) design.left = &axle.left()->designPose();
-    if (axle.right()) design.right = &axle.right()->designPose();
-    design.leftRatio = atDesign.leftInstallationRatio;
-    design.rightRatio = atDesign.rightInstallationRatio;
-    return design;
+    return tyreCompliance && kind != SweepKind::Steer && axle.canDeflectTyres();
 }
 
-void computeBarTwist(AxleSample* sample)
+/// Whether a @p kind sweep of @p axle has forces to report.
+bool carriesLoads(const AxleSolver& axle, SweepKind kind)
 {
-    if (!sample->left.valid || !sample->right.valid || !sample->left.hasAntiRoll
-        || !sample->right.hasAntiRoll)
-        return;
+    return kind != SweepKind::Steer && axle.rates() && axle.rates()->hasSpring();
+}
+
+/// How far the road has risen under @p solver's contact patch, against the
+/// body, at @p input of a bump or a roll.
+double groundRiseFor(const CornerSolver& solver, SweepKind kind, double input)
+{
+    return kind == SweepKind::Roll ? rolledGroundRise(solver, input) : input;
+}
+
+bool everySideAssembled(const AxleSolver& axle, const AxleSample& sample)
+{
+    return (!axle.left() || sample.left.valid) && (!axle.right() || sample.right.valid);
+}
+
+/// Both sides of @p sample posed at its own input with the tyres giving way,
+/// and what they carry there. @p previous is a neighbour to continue from.
+void poseCompliantSample(const AxleSolver& axle, SweepKind kind, double rackTravel,
+                         const AxleSample* previous, AxleSample* sample)
+{
+    const AxleSides sides = sidesOf(axle);
+    SidePair groundRise;
+    if (sides.left) groundRise.left = groundRiseFor(*sides.left, kind, sample->input);
+    if (sides.right) groundRise.right = groundRiseFor(*sides.right, kind, sample->input);
+
+    AxlePoses neighbour;
+    if (previous) neighbour = AxlePoses{ previous->left, previous->right };
+    CompliantAxle settled = solveCompliantAxle(sides, *axle.rates(), groundRise, rackTravel,
+                                               previous ? &neighbour : nullptr);
+    sample->left = std::move(settled.poses.left);
+    sample->right = std::move(settled.poses.right);
+    sample->loads = settled.loads;
+    if (kind != SweepKind::Roll) return;
+    for (CornerPose* pose : { &sample->left, &sample->right })
+        if (pose->valid) pose->camberToGround = camberToRolledGround(*pose, sample->input);
+}
+
+/// Walk @p samples from @p first to @p last with the tyres giving way, each
+/// position continuing from the last one that assembled.
+void walkCompliant(const AxleSolver& axle, const SweepSpec& spec, int first, int last,
+                   int stride, std::vector<AxleSample>* samples)
+{
+    const AxleSample* previous = nullptr;
+    for (int i = first; stride > 0 ? i <= last : i >= last; i += stride) {
+        AxleSample& sample = (*samples)[static_cast<std::size_t>(i)];
+        poseCompliantSample(axle, spec.kind, spec.rackTravel, previous, &sample);
+        if (everySideAssembled(axle, sample)) previous = &sample;
+    }
+}
+
+/// What the springs and the bar carry in @p sample, its tyres taken as rigid.
+AxleLoads rigidLoads(const AxleSolver& axle, const AxleSample& sample, double rackTravel)
+{
+    return suspensionLoads(sidesOf(axle), *axle.rates(), AxlePoses{ sample.left, sample.right },
+                           rackTravel);
+}
+
+/// The installation ratio where @p pose stands, across a small probe of wheel
+/// travel either side of it.
+double installationRatioAt(const CornerSolver& solver, const CornerPose& pose, double rackTravel)
+{
+    if (!pose.valid) return 0.0;
+    constexpr double kProbeMm = 0.5;
+    return installationRatio(
+        solver.poseAtWheelTravel(pose.wheelTravel - kProbeMm, rackTravel, &pose),
+        solver.poseAtWheelTravel(pose.wheelTravel + kProbeMm, rackTravel, &pose));
+}
+
+/// The bar's twist between the two arms of @p sample, when both sides have one.
+void computeAntiRollTwist(AxleSample* sample)
+{
+    if (!sample->left.valid || !sample->right.valid) return;
+    if (!sample->left.hasAntiRoll || !sample->right.hasAntiRoll) return;
     sample->hasAntiRoll = true;
     sample->antiRollTwist =
         (sample->left.antiRollArmAngle - sample->right.antiRollArmAngle) * kRadToDeg;
 }
 
-/// The forces at both wheels and the roll moment they make, once the ratios
-/// are in the sample.
-void computeLoads(AxleSample* sample, const AxleSprings& springs, const SpringDesign& design)
+/// @p axle at @p sample's input with the tyres giving way: the whole of what
+/// @ref sampleAxleAt returns, for the one case that solves both sides at once.
+void sampleCompliantAxle(const AxleSolver& axle, SweepKind kind, double rackTravel,
+                         AxleSample* sample)
 {
-    sample->leftLoad = wheelLoadAt(WheelMotion{ &sample->left, design.left,
-                                                sample->leftInstallationRatio, design.leftRatio,
-                                                sample->leftBarRatio },
-                                   springs, sample->antiRollTwist, sample->hasAntiRoll, true);
-    sample->rightLoad = wheelLoadAt(WheelMotion{ &sample->right, design.right,
-                                                 sample->rightInstallationRatio, design.rightRatio,
-                                                 sample->rightBarRatio },
-                                    springs, sample->antiRollTwist, sample->hasAntiRoll, false);
-    sample->rollMomentValid = sample->leftLoad.valid && sample->rightLoad.valid;
-    if (sample->rollMomentValid)
-        sample->rollMoment = rollMomentOf(sample->leftLoad, sample->left.contactPatch.y,
-                                          sample->rightLoad, sample->right.contactPatch.y);
+    poseCompliantSample(axle, kind, rackTravel, nullptr, sample);
+    computeRollCentre(sample);
+    computeAntiRollTwist(sample);
+    if (axle.left())
+        sample->leftInstallationRatio = installationRatioAt(*axle.left(), sample->left, rackTravel);
+    if (axle.right())
+        sample->rightInstallationRatio =
+            installationRatioAt(*axle.right(), sample->right, rackTravel);
 }
 
 } // namespace
@@ -688,10 +762,14 @@ Rigid bodyRollMotion(const RollAxis& axis, double degrees)
 }
 
 AxleSample sampleAxleAt(const AxleSolver& axle, SweepKind kind, double input,
-                        double rackTravel)
+                        double rackTravel, bool tyreCompliance)
 {
     AxleSample sample;
     sample.input = input;
+    if (deflectsTyres(axle, kind, tyreCompliance)) {
+        sampleCompliantAxle(axle, kind, rackTravel, &sample);
+        return sample;
+    }
     if (axle.left()) sample.left = poseFor(*axle.left(), kind, input, rackTravel, nullptr);
     if (axle.right()) sample.right = poseFor(*axle.right(), kind, input, rackTravel, nullptr);
     computeRollCentre(&sample);
@@ -707,17 +785,28 @@ AxleSample sampleAxleAt(const AxleSolver& axle, SweepKind kind, double input,
         const CornerPose after = poseFor(*solver, kind, input + probe, rackTravel, nullptr);
         (side == 0 ? sample.leftInstallationRatio : sample.rightInstallationRatio) =
             installationRatio(before, after);
-        (side == 0 ? sample.leftBarRatio : sample.rightBarRatio) = barRatio(before, after);
     }
 
-    computeBarTwist(&sample);
-    if (axle.springs()) {
-        const AxleSample design =
-            std::abs(input) < 1e-12 ? sample : sampleAxleAt(axle, kind, 0.0, rackTravel);
-        computeLoads(&sample, *axle.springs(), springDesignOf(axle, design));
-    }
+    computeAntiRollTwist(&sample);
+    if (carriesLoads(axle, kind)) sample.loads = rigidLoads(axle, sample, rackTravel);
     return sample;
 }
+
+namespace {
+
+/// Why @p axle is swept with rigid tyres although the sweep asked otherwise.
+QString tyresHeldRigidWarning(const AxleSolver& axle)
+{
+    const std::optional<AxleRates>& rates = axle.rates();
+    if (!rates || !rates->hasSpring() || !rates->hasTyre())
+        return tr("%1 has no spring and tyre rates, so its tyres are taken as rigid. "
+                  "Linkage > Springs and Tyres states them.")
+            .arg(axle.label());
+    return tr("%1 has no damper for a spring to sit on, so its tyres are taken as rigid.")
+        .arg(axle.label());
+}
+
+} // namespace
 
 SweepResult runSweep(const AxleSolver& axle, const SweepSpec& spec)
 {
@@ -774,10 +863,19 @@ SweepResult runSweep(const AxleSolver& axle, const SweepSpec& spec)
         walk(middle, steps - 1, 1);
         walk(middle, 0, -1);
     };
-    solveSide(axle.left(), true);
-    solveSide(axle.right(), false);
+    const bool compliant = deflectsTyres(axle, bounded.kind, bounded.tyreCompliance);
+    result.hasLoads = carriesLoads(axle, bounded.kind);
+    result.tyresDeflect = compliant;
+    if (compliant) {
+        walkCompliant(axle, bounded, middle, steps - 1, 1, &result.samples);
+        walkCompliant(axle, bounded, middle, 0, -1, &result.samples);
+    } else {
+        solveSide(axle.left(), true);
+        solveSide(axle.right(), false);
+    }
+    if (bounded.tyreCompliance && bounded.kind != SweepKind::Steer && !compliant)
+        result.warnings << tyresHeldRigidWarning(axle);
 
-    result.sprung = axle.springs().has_value();
     for (int i = 0; i < steps; ++i) {
         AxleSample& sample = result.samples[static_cast<std::size_t>(i)];
         computeRollCentre(&sample);
@@ -791,24 +889,10 @@ SweepResult runSweep(const AxleSolver& axle, const SweepSpec& spec)
         sample.rightInstallationRatio =
             installationRatio(result.samples[static_cast<std::size_t>(before)].right,
                               result.samples[static_cast<std::size_t>(after)].right);
-        sample.leftBarRatio = barRatio(result.samples[static_cast<std::size_t>(before)].left,
-                                       result.samples[static_cast<std::size_t>(after)].left);
-        sample.rightBarRatio = barRatio(result.samples[static_cast<std::size_t>(before)].right,
-                                        result.samples[static_cast<std::size_t>(after)].right);
 
-        computeBarTwist(&sample);
-    }
-
-    // The loads are read against the design position, so they wait for its
-    // ratios: the sample at input 0 when the sweep has one, else a probe there.
-    if (result.sprung) {
-        const AxleSample& nearDesign = result.samples[static_cast<std::size_t>(middle)];
-        const AxleSample design = std::abs(nearDesign.input) < 1e-12
-                                      ? nearDesign
-                                      : sampleAxleAt(axle, bounded.kind, 0.0, bounded.rackTravel);
-        const SpringDesign springDesign = springDesignOf(axle, design);
-        for (AxleSample& sample : result.samples)
-            computeLoads(&sample, *axle.springs(), springDesign);
+        computeAntiRollTwist(&sample);
+        if (result.hasLoads && !compliant)
+            sample.loads = rigidLoads(axle, sample, bounded.rackTravel);
     }
 
     // A step that would not assemble is worth one line, not one line each.
@@ -841,10 +925,8 @@ const std::vector<SweepMeasure>& sweepMeasures()
         SweepMeasure::DamperLength,     SweepMeasure::InstallationRatio,
         SweepMeasure::RollCentreHeight, SweepMeasure::RollCentreLateral,
         SweepMeasure::AntiRollTwist,    SweepMeasure::Ackermann,
-        SweepMeasure::SpringForce,      SweepMeasure::WheelRate,
-        SweepMeasure::WheelLoad,        SweepMeasure::TyreDeflection,
-        SweepMeasure::RideRate,         SweepMeasure::TravelWithTyre,
-        SweepMeasure::RollMoment,
+        SweepMeasure::TyreDeflection,   SweepMeasure::WheelLoad,
+        SweepMeasure::SpringForce,      SweepMeasure::AntiRollTorque,
     };
     return all;
 }
@@ -869,13 +951,10 @@ QString sweepMeasureLabel(SweepMeasure measure)
     case SweepMeasure::RollCentreLateral: return tr("Roll centre offset");
     case SweepMeasure::AntiRollTwist: return tr("Anti-roll bar twist");
     case SweepMeasure::Ackermann: return tr("Ackermann");
-    case SweepMeasure::SpringForce: return tr("Spring force");
-    case SweepMeasure::WheelRate: return tr("Wheel rate");
-    case SweepMeasure::WheelLoad: return tr("Wheel load");
     case SweepMeasure::TyreDeflection: return tr("Tyre deflection");
-    case SweepMeasure::RideRate: return tr("Ride rate");
-    case SweepMeasure::TravelWithTyre: return tr("Travel incl. tyre");
-    case SweepMeasure::RollMoment: return tr("Roll moment");
+    case SweepMeasure::WheelLoad: return tr("Wheel load change");
+    case SweepMeasure::SpringForce: return tr("Spring force change");
+    case SweepMeasure::AntiRollTorque: return tr("Anti-roll bar torque");
     }
     return QString();
 }
@@ -891,11 +970,9 @@ QString sweepMeasureUnit(SweepMeasure measure)
     case SweepMeasure::AntiRollTwist: return QStringLiteral("deg");
     case SweepMeasure::InstallationRatio: return QStringLiteral("mm/mm");
     case SweepMeasure::Ackermann: return QStringLiteral("%");
-    case SweepMeasure::SpringForce:
-    case SweepMeasure::WheelLoad: return QStringLiteral("N");
-    case SweepMeasure::WheelRate:
-    case SweepMeasure::RideRate: return QStringLiteral("N/mm");
-    case SweepMeasure::RollMoment: return QStringLiteral("Nm");
+    case SweepMeasure::WheelLoad:
+    case SweepMeasure::SpringForce: return QStringLiteral("N");
+    case SweepMeasure::AntiRollTorque: return QStringLiteral("Nm");
     default: break;
     }
     return QStringLiteral("mm");
@@ -921,13 +998,10 @@ QString sweepMeasureKey(SweepMeasure measure)
     case SweepMeasure::RollCentreLateral: return QStringLiteral("rollCentreLateral");
     case SweepMeasure::AntiRollTwist: return QStringLiteral("antiRollTwist");
     case SweepMeasure::Ackermann: return QStringLiteral("ackermann");
-    case SweepMeasure::SpringForce: return QStringLiteral("springForce");
-    case SweepMeasure::WheelRate: return QStringLiteral("wheelRate");
-    case SweepMeasure::WheelLoad: return QStringLiteral("wheelLoad");
     case SweepMeasure::TyreDeflection: return QStringLiteral("tyreDeflection");
-    case SweepMeasure::RideRate: return QStringLiteral("rideRate");
-    case SweepMeasure::TravelWithTyre: return QStringLiteral("travelWithTyre");
-    case SweepMeasure::RollMoment: return QStringLiteral("rollMoment");
+    case SweepMeasure::WheelLoad: return QStringLiteral("wheelLoad");
+    case SweepMeasure::SpringForce: return QStringLiteral("springForce");
+    case SweepMeasure::AntiRollTorque: return QStringLiteral("antiRollTorque");
     }
     return QString();
 }
@@ -946,7 +1020,7 @@ bool sweepMeasureIsPerSide(SweepMeasure measure)
     case SweepMeasure::RollCentreLateral:
     case SweepMeasure::AntiRollTwist:
     case SweepMeasure::Ackermann:
-    case SweepMeasure::RollMoment: return false;
+    case SweepMeasure::AntiRollTorque: return false;
     default: break;
     }
     return true;
@@ -978,8 +1052,8 @@ double sweepMeasureResolution(SweepMeasure measure)
     const QString unit = sweepMeasureUnit(measure);
     if (unit == QLatin1String("deg")) return 0.01;
     if (unit == QLatin1String("mm/mm")) return 0.001;
-    if (unit == QLatin1String("Nm")) return 0.01;
-    return 0.1; // millimetres, newtons, newtons per millimetre and percent Ackermann
+    if (unit == QLatin1String("N")) return 1.0;
+    return 0.1; // millimetres, newton metres, and percent Ackermann
 }
 
 QString sweepValueText(double value)
@@ -987,42 +1061,6 @@ QString sweepValueText(double value)
     if (std::abs(value) < 0.0005) value = 0.0;
     return QString::number(value, 'f', 3);
 }
-
-namespace {
-
-/// @p measure read off one wheel's loads, false for what is not a load or not
-/// there: a spring force with no spring on the axle, a tyre with no rate.
-bool wheelLoadValue(const WheelLoad& load, SweepMeasure measure, double* value)
-{
-    if (!load.valid) return false;
-    switch (measure) {
-    case SweepMeasure::SpringForce:
-        if (load.wheelRate <= 0.0) return false;
-        *value = load.springForce;
-        return true;
-    case SweepMeasure::WheelRate:
-        if (load.wheelRate <= 0.0) return false;
-        *value = load.wheelRate;
-        return true;
-    case SweepMeasure::WheelLoad: *value = load.load; return true;
-    case SweepMeasure::TyreDeflection:
-        if (!load.tyreValid) return false;
-        *value = load.tyreDeflection;
-        return true;
-    case SweepMeasure::RideRate:
-        if (!load.tyreValid || load.rideRate <= 0.0) return false;
-        *value = load.rideRate;
-        return true;
-    case SweepMeasure::TravelWithTyre:
-        if (!load.tyreValid) return false;
-        *value = load.travelWithTyre;
-        return true;
-    default: break;
-    }
-    return false;
-}
-
-} // namespace
 
 bool sweepMeasureValue(const AxleSample& sample, SweepMeasure measure, bool leftSide,
                        double* value)
@@ -1044,17 +1082,15 @@ bool sweepMeasureValue(const AxleSample& sample, SweepMeasure measure, bool left
         if (!sample.ackermannValid) return false;
         *value = sample.ackermann;
         return true;
-    case SweepMeasure::RollMoment:
-        if (!sample.rollMomentValid) return false;
-        *value = sample.rollMoment;
+    case SweepMeasure::AntiRollTorque:
+        if (!sample.loads.valid || !sample.hasAntiRoll) return false;
+        *value = sample.loads.antiRollTorque;
         return true;
     default: break;
     }
 
     const CornerPose& pose = leftSide ? sample.left : sample.right;
     if (!pose.valid) return false;
-    if (wheelLoadValue(leftSide ? sample.leftLoad : sample.rightLoad, measure, value))
-        return true;
 
     switch (measure) {
     case SweepMeasure::WheelTravel: *value = pose.wheelTravel; return true;
@@ -1079,6 +1115,18 @@ bool sweepMeasureValue(const AxleSample& sample, SweepMeasure measure, bool left
         if (!pose.hasDamper) return false;
         *value = leftSide ? sample.leftInstallationRatio : sample.rightInstallationRatio;
         return true;
+    case SweepMeasure::TyreDeflection:
+        if (!sample.loads.valid) return false;
+        *value = leftSide ? sample.loads.leftTyreDeflection : sample.loads.rightTyreDeflection;
+        return true;
+    case SweepMeasure::WheelLoad:
+        if (!sample.loads.valid) return false;
+        *value = leftSide ? sample.loads.leftWheelLoad : sample.loads.rightWheelLoad;
+        return true;
+    case SweepMeasure::SpringForce:
+        if (!sample.loads.valid) return false;
+        *value = leftSide ? sample.loads.leftSpringForce : sample.loads.rightSpringForce;
+        return true;
     default: break;
     }
     return false;
@@ -1100,16 +1148,6 @@ QString sweepMeasureRequirement(SweepMeasure measure)
     case SweepMeasure::DamperTravel:
     case SweepMeasure::InstallationRatio: return tr("a pushrod, a rocker and a damper");
     case SweepMeasure::AntiRollTwist: return tr("an anti-roll bar");
-    case SweepMeasure::SpringForce:
-    case SweepMeasure::WheelRate:
-        return tr("a damper and a spring rate (Linkage > Springs and Tyres)");
-    case SweepMeasure::WheelLoad:
-    case SweepMeasure::RollMoment:
-        return tr("a spring or anti-roll bar rate (Linkage > Springs and Tyres)");
-    case SweepMeasure::TyreDeflection:
-    case SweepMeasure::TravelWithTyre: return tr("a tyre rate (Linkage > Springs and Tyres)");
-    case SweepMeasure::RideRate:
-        return tr("a spring and a tyre rate (Linkage > Springs and Tyres)");
     default: break;
     }
     return QString();
@@ -1134,36 +1172,12 @@ constexpr CsvColumn kCsvSideColumns[] = {
     { "installation_ratio", "mm/mm" },
 };
 
-/// The columns a sprung axle adds to each side, after the ones above, and the
-/// measures they are read through.
-struct CsvLoadColumn {
-    CsvColumn column;
-    SweepMeasure measure;
-};
-
-constexpr CsvLoadColumn kCsvLoadColumns[] = {
-    { { "spring_force", "N" }, SweepMeasure::SpringForce },
-    { { "wheel_rate", "N/mm" }, SweepMeasure::WheelRate },
-    { { "wheel_load", "N" }, SweepMeasure::WheelLoad },
-    { { "tyre_deflection", "mm" }, SweepMeasure::TyreDeflection },
-    { { "ride_rate", "N/mm" }, SweepMeasure::RideRate },
-    { { "travel_with_tyre", "mm" }, SweepMeasure::TravelWithTyre },
-};
-
-int csvSideColumnCount(bool sprung)
-{
-    return int(std::size(kCsvSideColumns)) + (sprung ? int(std::size(kCsvLoadColumns)) : 0);
-}
-
 /// The header of one side's columns, each name prefixed with @p prefix.
-QByteArray csvSideHeader(const QByteArray& prefix, const QByteArray& side, bool sprung)
+QByteArray csvSideHeader(const QByteArray& prefix, const QByteArray& side)
 {
     QByteArray header;
     for (const CsvColumn& column : kCsvSideColumns)
         header += "," + prefix + column.name + "_" + side + " [" + column.unit + "]";
-    if (!sprung) return header;
-    for (const CsvLoadColumn& load : kCsvLoadColumns)
-        header += "," + prefix + load.column.name + "_" + side + " [" + load.column.unit + "]";
     return header;
 }
 
@@ -1175,12 +1189,6 @@ QByteArray csvAxleHeader(const QByteArray& prefix)
 {
     return "," + prefix + "roll_centre_height [mm]," + prefix + "roll_centre_lateral [mm],"
            + prefix + "anti_roll_twist [deg]," + prefix + "ackermann [%]";
-}
-
-/// The axle-wide column a sprung axle adds.
-QByteArray csvLoadAxleHeader(const QByteArray& prefix)
-{
-    return "," + prefix + "roll_moment [Nm]";
 }
 
 /// One side's fields of one row.
@@ -1200,23 +1208,6 @@ QByteArray csvSideFields(const CornerPose& pose, double installationRatio)
     return fields;
 }
 
-/// One side's load fields of one row, empty where there is no number.
-QByteArray csvLoadFields(const AxleSample& sample, bool leftSide)
-{
-    QByteArray fields;
-    for (const CsvLoadColumn& load : kCsvLoadColumns) {
-        double value = 0.0;
-        fields += sweepMeasureValue(sample, load.measure, leftSide, &value) ? "," + field(value)
-                                                                             : QByteArray(",");
-    }
-    return fields;
-}
-
-QByteArray csvLoadAxleFields(const AxleSample& sample)
-{
-    return sample.rollMomentValid ? "," + field(sample.rollMoment) : QByteArray(",");
-}
-
 /// The axle-wide fields of one row.
 QByteArray csvAxleFields(const AxleSample& sample)
 {
@@ -1234,6 +1225,45 @@ struct CsvSides {
     bool right = true;
 };
 
+/// The columns each side takes for what it carries, on an axle with rates.
+constexpr CsvColumn kCsvLoadColumns[] = {
+    { "tyre_deflection", "mm" },
+    { "wheel_load", "N" },
+    { "spring_force", "N" },
+};
+
+/// The header of an axle's load columns: the wheels asked for, then the bar.
+QByteArray csvLoadsHeader(const QByteArray& prefix, CsvSides sides)
+{
+    QByteArray header;
+    for (const char* side : { "left", "right" }) {
+        if (!(side[0] == 'l' ? sides.left : sides.right)) continue;
+        for (const CsvColumn& column : kCsvLoadColumns)
+            header += "," + prefix + column.name + "_" + side + " [" + column.unit + "]";
+    }
+    return header + "," + prefix + "anti_roll_torque [Nm]";
+}
+
+/// One axle's load fields of one row, empty where there are no loads.
+QByteArray csvLoadsFields(const AxleSample* sample, CsvSides sides)
+{
+    const int sideColumns = int(std::size(kCsvLoadColumns));
+    if (!sample || !sample->loads.valid)
+        return QByteArray((sides.left ? sideColumns : 0) + (sides.right ? sideColumns : 0) + 1,
+                          ',');
+    const AxleLoads& loads = sample->loads;
+    QByteArray fields;
+    if (sides.left)
+        for (const double value :
+             { loads.leftTyreDeflection, loads.leftWheelLoad, loads.leftSpringForce })
+            fields += "," + field(value);
+    if (sides.right)
+        for (const double value :
+             { loads.rightTyreDeflection, loads.rightWheelLoad, loads.rightSpringForce })
+            fields += "," + field(value);
+    return fields + (sample->hasAntiRoll ? "," + field(loads.antiRollTorque) : QByteArray(","));
+}
+
 /// What an axle's columns are prefixed with when several axles share a sheet:
 /// its label, or its corner token when the template gave it none.
 QByteArray csvAxlePrefix(const SweepResult& result)
@@ -1243,33 +1273,34 @@ QByteArray csvAxlePrefix(const SweepResult& result)
 }
 
 /// The header of one axle's columns: the wheels asked for, then the axle-wide ones.
-QByteArray csvSweepHeader(const QByteArray& prefix, CsvSides sides, bool sprung)
+QByteArray csvSweepHeader(const QByteArray& prefix, CsvSides sides)
 {
     QByteArray header;
-    if (sides.left) header += csvSideHeader(prefix, "left", sprung);
-    if (sides.right) header += csvSideHeader(prefix, "right", sprung);
-    header += csvAxleHeader(prefix);
-    return sprung ? header + csvLoadAxleHeader(prefix) : header;
+    if (sides.left) header += csvSideHeader(prefix, "left");
+    if (sides.right) header += csvSideHeader(prefix, "right");
+    return header + csvAxleHeader(prefix);
+}
+
+/// The sample of @p result in row @p row, or nothing past the end of its sweep.
+const AxleSample* csvRowSample(const SweepResult& result, std::size_t row)
+{
+    return row < result.samples.size() ? &result.samples[row] : nullptr;
 }
 
 /// One axle's fields of row @p row, all of them empty past the end of its sweep.
 QByteArray csvSweepFields(const SweepResult& result, std::size_t row, CsvSides sides)
 {
-    const bool sprung = result.sprung;
     if (row >= result.samples.size()) {
-        const int sideColumns = csvSideColumnCount(sprung);
+        const int sideColumns = int(std::size(kCsvSideColumns));
         return QByteArray((sides.left ? sideColumns : 0) + (sides.right ? sideColumns : 0)
-                              + kCsvAxleColumns + (sprung ? 1 : 0),
+                              + kCsvAxleColumns,
                           ',');
     }
     const AxleSample& sample = result.samples[row];
     QByteArray fields;
     if (sides.left) fields += csvSideFields(sample.left, sample.leftInstallationRatio);
-    if (sides.left && sprung) fields += csvLoadFields(sample, true);
     if (sides.right) fields += csvSideFields(sample.right, sample.rightInstallationRatio);
-    if (sides.right && sprung) fields += csvLoadFields(sample, false);
-    fields += csvAxleFields(sample);
-    return sprung ? fields + csvLoadAxleFields(sample) : fields;
+    return fields + csvAxleFields(sample);
 }
 
 } // namespace
@@ -1289,16 +1320,23 @@ QByteArray sweepsToCsv(const std::vector<SweepResult>& results, SweepSides sides
             return a->samples.size() < b->samples.size();
         });
 
-    QByteArray csv = sweepInputLabel(longest->kind).toUtf8() + " ["
+    QByteArray csv = sweepInputLabel(longest->kind, longest->tyresDeflect).toUtf8() + " ["
                      + sweepInputUnit(longest->kind).toUtf8() + "]";
-    for (const SweepResult* result : swept)
-        csv += csvSweepHeader(several ? csvAxlePrefix(*result) : QByteArray(), wanted,
-                              result->sprung);
+    for (const SweepResult* result : swept) {
+        const QByteArray prefix = several ? csvAxlePrefix(*result) : QByteArray();
+        csv += csvSweepHeader(prefix, wanted);
+        // Only an axle with rates has these, so a sheet without any reads the
+        // way it always has.
+        if (result->hasLoads) csv += csvLoadsHeader(prefix, wanted);
+    }
     csv += "\n";
 
     for (std::size_t row = 0; row < longest->samples.size(); ++row) {
         csv += field(longest->samples[row].input);
-        for (const SweepResult* result : swept) csv += csvSweepFields(*result, row, wanted);
+        for (const SweepResult* result : swept) {
+            csv += csvSweepFields(*result, row, wanted);
+            if (result->hasLoads) csv += csvLoadsFields(csvRowSample(*result, row), wanted);
+        }
         csv += "\n";
     }
     return csv;
@@ -1309,12 +1347,19 @@ QByteArray sweepToCsv(const SweepResult& result)
     QByteArray csv;
     const QByteArray unit = sweepInputUnit(result.kind).toUtf8();
 
-    csv += sweepInputLabel(result.kind).toUtf8() + " [" + unit + "]";
-    csv += csvSweepHeader(QByteArray(), CsvSides{}, result.sprung) + "\n";
+    csv += sweepInputLabel(result.kind, result.tyresDeflect).toUtf8() + " [" + unit + "]";
+    csv += csvSideHeader(QByteArray(), "left");
+    csv += csvSideHeader(QByteArray(), "right");
+    csv += csvAxleHeader(QByteArray());
+    if (result.hasLoads) csv += csvLoadsHeader(QByteArray(), CsvSides{});
+    csv += "\n";
 
-    for (std::size_t row = 0; row < result.samples.size(); ++row) {
-        csv += field(result.samples[row].input);
-        csv += csvSweepFields(result, row, CsvSides{});
+    for (const AxleSample& sample : result.samples) {
+        csv += field(sample.input);
+        csv += csvSideFields(sample.left, sample.leftInstallationRatio);
+        csv += csvSideFields(sample.right, sample.rightInstallationRatio);
+        csv += csvAxleFields(sample);
+        if (result.hasLoads) csv += csvLoadsFields(&sample, CsvSides{});
         csv += "\n";
     }
     return csv;

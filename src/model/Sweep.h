@@ -1,7 +1,7 @@
 #pragma once
 
+#include "model/Compliance.h"
 #include "model/Linkage.h"
-#include "model/SpringLoads.h"
 #include "model/SuspensionSolver.h"
 
 #include <QByteArray>
@@ -27,7 +27,9 @@ QString sweepKindToString(SweepKind kind);
 SweepKind sweepKindFromString(const QString& text, SweepKind fallback = SweepKind::Bump);
 /// The unit the input is in, for an axis label.
 QString sweepInputUnit(SweepKind kind);
-QString sweepInputLabel(SweepKind kind);
+/// What the input is called. With the tyres giving way a bump is no longer the
+/// wheel's travel -- that is then a result -- but the body's against the road.
+QString sweepInputLabel(SweepKind kind, bool tyresDeflect = false);
 
 /// What a corner is made of, when the project says: the template, for which
 /// points belong to which corner and which parts give, and the configuration,
@@ -66,11 +68,15 @@ public:
     /// from. A side whose configuration does not describe a corner that moves
     /// as one -- a joint left out, a body nothing holds -- is solved from the
     /// roles instead, and a warning says what is missing.
+    ///
+    /// @p rates is how stiff the axle's springs, bar and tyres are, when the
+    /// project says. Nothing means a sweep of this axle has no forces in it.
     static AxleSolver build(const MechanismTemplate& mechanism, const CornerSpec& corner,
                             const HardpointTable& table, const MirrorSpec& mirror,
                             bool steeringDeclared = false,
                             const std::optional<StaticAlignment>& alignment = std::nullopt,
-                            const LinkageDescription& description = {});
+                            const LinkageDescription& description = {},
+                            const std::optional<AxleRates>& rates = std::nullopt);
 
     bool isEmpty() const { return !m_left && !m_right; }
     bool hasBothSides() const { return m_left.has_value() && m_right.has_value(); }
@@ -87,6 +93,12 @@ public:
     const std::optional<CornerSolver>& left() const { return m_left; }
     const std::optional<CornerSolver>& right() const { return m_right; }
 
+    /// The axle's spring, bar and tyre rates, when the project states them.
+    const std::optional<AxleRates>& rates() const { return m_rates; }
+    /// Whether a sweep of this axle can let its tyres give way: there is a
+    /// spring rate, a tyre rate, and a damper for the spring to sit on.
+    bool canDeflectTyres() const;
+
     /// Millimetres fore and aft to the axle a turn is centred on -- the wheelbase,
     /// as far as Ackermann is concerned. An axle on its own knows nothing about
     /// the rest of the car, so this is zero until something that can see every
@@ -101,11 +113,6 @@ public:
     /// the front view.
     std::optional<Vec3> designRollCentre() const;
 
-    /// What the axle is sprung with, for the loads a sweep reads off it.
-    /// Nothing is the kinematics alone.
-    const std::optional<AxleSprings>& springs() const { return m_springs; }
-    void setSprings(const std::optional<AxleSprings>& springs) { m_springs = springs; }
-
 private:
     QString m_token;
     QString m_label;
@@ -113,7 +120,7 @@ private:
     std::optional<CornerSolver> m_right;
     QStringList m_warnings;
     double m_wheelbase = 0.0;
-    std::optional<AxleSprings> m_springs;
+    std::optional<AxleRates> m_rates;
 };
 
 /// Give each axle the distance to the axle farthest from it, measured between
@@ -185,6 +192,12 @@ struct SweepSpec {
     /// Held constant through a bump or roll sweep, so bump steer can be looked
     /// at on a wheel that is already turned.
     double rackTravel = 0.0;
+    /// Let the tyres give way. A bump or a roll is then the body against the
+    /// *road* -- the road rises under both contact patches, or tilts under them
+    /// -- and the suspension travels only as far as its springs, its bar and
+    /// its tyres share that out. It takes an axle with rates
+    /// (@ref AxleSolver::canDeflectTyres); any other is swept rigid as before.
+    bool tyreCompliance = false;
 
     bool operator==(const SweepSpec& other) const;
     bool operator!=(const SweepSpec& other) const { return !(*this == other); }
@@ -272,19 +285,6 @@ struct AxleSample {
     double antiRollTwist = 0.0;
     bool hasAntiRoll = false;
 
-    /// Degrees the bar's arm turns per millimetre of that side's wheel travel,
-    /// the bar's own installation ratio: what turns its twist into a force.
-    double leftBarRatio = 0.0;
-    double rightBarRatio = 0.0;
-
-    /// The forces at each wheel, when the axle has springs
-    /// (@ref AxleSolver::springs), and the moment they make about the
-    /// centreline, which is what resists a roll.
-    WheelLoad leftLoad;
-    WheelLoad rightLoad;
-    double rollMoment = 0.0;
-    bool rollMomentValid = false;
-
     /// Percent Ackermann (@ref ackermannPercent), read off a steer sweep only.
     /// Each wheel's steer angle is its toe change from rack centre, so static toe
     /// -- a setting, not the geometry -- stays out of it; the track is between
@@ -292,6 +292,11 @@ struct AxleSample {
     /// on an axle that has not been given a wheelbase.
     double ackermann = 0.0;
     bool ackermannValid = false;
+
+    /// What the springs, the bar and the tyres carry here, on an axle whose
+    /// rates the project states. Not there in a steer sweep, which moves no
+    /// spring.
+    AxleLoads loads;
 
     bool valid() const { return left.valid || right.valid; }
 };
@@ -303,8 +308,12 @@ struct SweepResult {
     QString axleLabel;
     std::vector<AxleSample> samples;
     QStringList warnings;
-    /// The axle had springs, so its samples carry loads -- and its CSV their columns.
-    bool sprung = false;
+    /// The axle has rates, so its samples carry loads and a CSV of it has the
+    /// columns for them.
+    bool hasLoads = false;
+    /// The tyres gave way in this sweep, so its input is the body against the
+    /// road rather than against the wheel.
+    bool tyresDeflect = false;
 
     bool isEmpty() const { return samples.empty(); }
     /// The sample nearest @p input, or nothing when there are none.
@@ -349,17 +358,15 @@ enum class SweepMeasure {
     RollCentreLateral,
     AntiRollTwist,
     Ackermann,
-    SpringForce,
-    WheelRate,
-    WheelLoad,
     TyreDeflection,
-    RideRate,
-    TravelWithTyre,
-    RollMoment,
+    WheelLoad,
+    SpringForce,
+    AntiRollTorque,
 };
 
 /// Every measure, in the order they belong in a menu: the wheel first, then the
-/// steering axis, then the ground, then the spring, then the axle.
+/// steering axis, then the ground, then the spring, then the axle, then the
+/// forces.
 const std::vector<SweepMeasure>& sweepMeasures();
 
 QString sweepMeasureLabel(SweepMeasure measure);
@@ -370,8 +377,7 @@ QString sweepMeasureKey(SweepMeasure measure);
 SweepMeasure sweepMeasureFromKey(const QString& key, SweepMeasure fallback = SweepMeasure::Camber);
 
 /// False for the ones that belong to the axle rather than to a wheel -- the roll
-/// centre, the bar's twist, Ackermann and the roll moment -- which are drawn as
-/// one curve, not two.
+/// centre, the bar's twist and Ackermann -- which are drawn as one curve, not two.
 bool sweepMeasureIsPerSide(SweepMeasure measure);
 
 /// Which wheels a plot draws, for a measure that has one curve per wheel.
@@ -421,7 +427,10 @@ QString sweepMeasureRequirement(SweepMeasure measure);
 /// solved from the design position rather than continued from a neighbour. The
 /// installation ratio still comes from a difference, taken across a small probe
 /// either side.
-AxleSample sampleAxleAt(const AxleSolver& axle, SweepKind kind, double input, double rackTravel);
+///
+/// @p tyreCompliance is @ref SweepSpec::tyreCompliance, for the one position.
+AxleSample sampleAxleAt(const AxleSolver& axle, SweepKind kind, double input, double rackTravel,
+                        bool tyreCompliance = false);
 
 /// Run @p spec over @p axle.
 ///
