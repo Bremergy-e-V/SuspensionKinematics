@@ -60,6 +60,12 @@ qt_add_executable(test_collision test_collision.cpp)
 target_link_libraries(test_collision PRIVATE suspkin_core Qt6::Test)
 add_test(NAME collision COMMAND test_collision)
 
+# Which ends of the travel a posed export writes, and that what it writes
+# reads back as the solved car.
+qt_add_executable(test_pose_export test_pose_export.cpp)
+target_link_libraries(test_pose_export PRIVATE suspkin_core Qt6::Test)
+add_test(NAME pose_export COMMAND test_pose_export)
+
 qt_add_executable(test_simulation test_simulation.cpp)
 target_link_libraries(test_simulation PRIVATE suspkin_core Qt6::Test)
 add_test(NAME simulation COMMAND test_simulation)

@@ -6,6 +6,7 @@ namespace suspkin {
 
 class AppContext;
 class Project;
+struct CollisionTravel;
 struct HardpointTable;
 
 /// What more than one feature -- or the command line -- reaches in another
@@ -34,5 +35,10 @@ QString geometryDialogDirectory(const Project& project);
 /// then where geometry came from, then the documents folder.
 /// HardpointWorkbookFeature.
 QString hardpointDialogDirectory(const Project& project);
+
+/// How far the analysis panel's sweep parameters take the rack and the
+/// wheels, whichever kind of sweep it is showing: the ends of the travel a
+/// collision check searches and a posed export writes. CollisionFeature.
+CollisionTravel sweepTravel(AppContext& context);
 
 } // namespace suspkin

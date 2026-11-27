@@ -167,10 +167,16 @@ std::optional<HardpointImport> HardpointDocument::import(const QString& path,
 
 bool HardpointDocument::writeTo(const QString& path, SessionMessage* problem) const
 {
-    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
     // Without the ghosts: the workbook holds one side, and a ghost row it
     // already had from an older build is emptied like any point that went.
-    const QString error = writeHardpointsXlsx(path, withoutGhosts(m_model.table()), m_source);
+    return writeTableTo(path, withoutGhosts(m_model.table()), problem);
+}
+
+bool HardpointDocument::writeTableTo(const QString& path, const HardpointTable& table,
+                                     SessionMessage* problem) const
+{
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    const QString error = writeHardpointsXlsx(path, table, m_source);
     QGuiApplication::restoreOverrideCursor();
 
     if (!error.isEmpty()) {

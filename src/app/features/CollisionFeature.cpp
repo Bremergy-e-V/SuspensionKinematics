@@ -1,6 +1,7 @@
 #include "app/AnalysisPanel.h"
 #include "app/CollisionDialog.h"
 #include "app/HardpointModel.h"
+#include "app/features/SharedCommands.h"
 #include "app/framework/AppContext.h"
 #include "app/framework/CommandRegistry.h"
 #include "app/framework/Feature.h"
@@ -64,7 +65,7 @@ private:
         const HardpointTable& design = m_context.hardpoints()->table();
         const std::vector<bool> grounded = groundedPoints(design, m_context.hardpoints()->config());
         const CollisionMeshes meshes = collisionMeshes();
-        const CollisionTravel travel = collisionTravel();
+        const CollisionTravel travel = sweepTravel(m_context);
         // The car does not change while the dialog is open, so a position is
         // solved the first time something is measured there.
         FrameCache cache;
@@ -90,15 +91,6 @@ private:
         if (settings == m_context.project().collision()) return;
         m_context.project().setCollision(settings);
         m_context.markDirty();
-    }
-
-    /// How far the analysis panel's sweep parameters take the rack and the
-    /// wheels, whichever kind of sweep it is showing.
-    CollisionTravel collisionTravel() const
-    {
-        const SweepSettings sweep = m_context.analysisPanel()->settings();
-        return CollisionTravel{ std::abs(sweep.steerTravel), std::abs(sweep.bumpTravel),
-                                std::abs(sweep.reboundTravel) };
     }
 
     /// The meshes the project has, each with the query a distance is
@@ -178,6 +170,13 @@ private:
 };
 
 } // namespace
+
+CollisionTravel sweepTravel(AppContext& context)
+{
+    const SweepSettings sweep = context.analysisPanel()->settings();
+    return CollisionTravel{ std::abs(sweep.steerTravel), std::abs(sweep.bumpTravel),
+                            std::abs(sweep.reboundTravel) };
+}
 
 SUSPKIN_FEATURE(CollisionFeature)
 

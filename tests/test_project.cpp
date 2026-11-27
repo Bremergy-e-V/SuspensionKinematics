@@ -51,6 +51,7 @@ private slots:
     void staticAnglesAreKeptPerAxle();
     void springAndTyreRatesAreKeptPerAxle();
     void collisionSettingsAreKept();
+    void poseExportSettingsAreKept();
 
     void editsAreTheDifferenceFromTheWorkbook();
     void editsRoundTripThroughTheirFile();
@@ -910,6 +911,24 @@ void TestProject::collisionSettingsAreKept()
     project->setCollision(collision);
     QVERIFY2(project->save(&error), qPrintable(error));
     QVERIFY(Project::open(project->manifestPath(), &error)->collision() == collision);
+}
+
+void TestProject::poseExportSettingsAreKept()
+{
+    QTemporaryDir directory;
+    QString error;
+    std::optional<Project> project =
+        Project::create(directory.filePath(QStringLiteral("A")), QStringLiteral("A"), &error);
+    QVERIFY2(project.has_value(), qPrintable(error));
+    QVERIFY(project->poseExport() == PoseExportSettings{});
+
+    PoseExportSettings settings;
+    settings.poses = { ExportPose{ TravelEnd::Positive, TravelEnd::Positive } };
+    settings.directory = directory.filePath(QStringLiteral("cad"));
+    settings.baseName = QStringLiteral("check");
+    project->setPoseExport(settings);
+    QVERIFY2(project->save(&error), qPrintable(error));
+    QVERIFY(Project::open(project->manifestPath(), &error)->poseExport() == settings);
 }
 
 void TestProject::staticAnglesAreKeptPerAxle()

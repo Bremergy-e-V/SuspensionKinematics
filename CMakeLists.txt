@@ -150,6 +150,10 @@ add_library(suspkin_core STATIC
     # travel: capsules and a mesh, so tested without a window.
     src/model/Collision.h
     src/model/Collision.cpp
+    # Which ends of the travel Export Posed Workbooks writes, and what each
+    # file is called.
+    src/model/PoseExport.h
+    src/model/PoseExport.cpp
     # The other direction: from vehicle targets to hardpoints. Trigonometry over
     # a few dozen numbers, ported from the team's Python geometry editor, and
     # checked by feeding what it makes back through the solver above.
@@ -290,6 +294,7 @@ qt_add_executable(suspkin
     src/app/features/LinkageFeature.cpp
     src/app/features/MechanismFeature.cpp
     src/app/features/CollisionFeature.cpp
+    src/app/features/PoseExportFeature.cpp
     src/app/features/RockerFeature.cpp
     src/app/features/TemplateEditorFeature.cpp
     src/app/features/PushrodFeature.cpp
@@ -356,6 +361,8 @@ qt_add_executable(suspkin
     src/app/SpringRatesDialog.cpp
     src/app/CollisionDialog.h
     src/app/CollisionDialog.cpp
+    src/app/PoseExportDialog.h
+    src/app/PoseExportDialog.cpp
     # What the program is made of and under what terms. Help > Licenses, and
     # the only copy of those texts a portable unzip carries.
     src/app/LicensesDialog.h

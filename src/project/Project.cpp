@@ -552,6 +552,8 @@ std::optional<Project> Project::open(const QString& manifestPath, QString* error
     project.m_rates = ratesFromJson(root.value(QStringLiteral("rates")).toObject());
     project.m_collision =
         collisionSettingsFromJson(root.value(QStringLiteral("collision")).toObject());
+    project.m_poseExport =
+        poseExportSettingsFromJson(root.value(QStringLiteral("poseExport")).toObject());
 
     const QJsonObject directories = root.value(QStringLiteral("directories")).toObject();
     project.m_lastGeometryDirectory = directories.value(QStringLiteral("geometry")).toString();
@@ -686,6 +688,8 @@ bool Project::save(QString* error) const
     if (!m_rates.isEmpty()) root.insert(QStringLiteral("rates"), ratesToJson(m_rates));
     if (m_collision != CollisionSettings{})
         root.insert(QStringLiteral("collision"), collisionSettingsToJson(m_collision));
+    if (m_poseExport != PoseExportSettings{})
+        root.insert(QStringLiteral("poseExport"), poseExportSettingsToJson(m_poseExport));
 
     QJsonObject directories;
     directories.insert(QStringLiteral("geometry"), m_lastGeometryDirectory);

@@ -353,6 +353,16 @@ workbook anywhere — starting from where the original came from, so pushing you
 changes back to the shared file is one click, and keeping a variant is just as
 easy.
 
+**Export Posed Workbooks** writes the car as it stands at the ends of its travel,
+for checking a CAD model against more than ride height: one workbook per pose
+ticked in a grid of full left lock, straight ahead and full right lock against
+full bump, ride height and full rebound. The travel is the sweep parameters'
+(rack travel, bump and rebound), every axle is at that wheel travel and the
+rack moves every axle it steers. Each file is laid out exactly like the
+project's workbook and named after it, e.g. `26_DY_rack+30_bump25.xlsx`. Unlike
+every other export it holds the far side too, because a steered car is no
+longer symmetric. Which poses, the folder and the name are kept in the project.
+
 Either way, writing rewrites the value cells and *nothing else*. The workbook is
 unzipped, those cells are spliced in as bytes, and every other part is copied through with
 its original compressed data untouched, so number formats, column widths, other

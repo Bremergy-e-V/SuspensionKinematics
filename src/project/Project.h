@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/Collision.h"
+#include "model/PoseExport.h"
 #include "model/DesignParameters.h"
 #include "model/Hardpoint.h"
 #include "model/HardpointConfig.h"
@@ -341,6 +342,10 @@ public:
     const CollisionSettings& collision() const { return m_collision; }
     void setCollision(const CollisionSettings& collision) { m_collision = collision; }
 
+    /// What Hardpoints > Export Posed Workbooks last wrote, and where.
+    const PoseExportSettings& poseExport() const { return m_poseExport; }
+    void setPoseExport(const PoseExportSettings& settings) { m_poseExport = settings; }
+
     /// Where the file dialogs last pointed, so a project remembers the folders
     /// its owner actually imports from.
     const QString& lastGeometryDirectory() const { return m_lastGeometryDirectory; }
@@ -370,6 +375,7 @@ private:
     QHash<QString, StaticAlignment> m_alignment;
     QHash<QString, AxleRates> m_rates;
     CollisionSettings m_collision;
+    PoseExportSettings m_poseExport;
     QString m_lastGeometryDirectory;
     QString m_lastHardpointDirectory;
 };

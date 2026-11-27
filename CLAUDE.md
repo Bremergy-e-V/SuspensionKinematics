@@ -1001,6 +1001,30 @@ no window.
 - The settings, the per-tube radii and the two keys are in the manifest under
   `collision`.
 
+## Exporting the car posed
+
+**Hardpoints > Export Posed Workbooks** (`features/PoseExportFeature.cpp`,
+`src/app/PoseExportDialog.*`) writes one workbook per pose ticked in a 3x3 grid:
+the rack at either end of its travel or centred, against every wheel at full
+bump, ride height or full rebound -- what the team checks the CAD against.
+`src/model/PoseExport.*` (core, `test_pose_export`) is which poses there are,
+their manifest keys (`"+-"`: full left lock, full rebound), what each is worth
+in millimetres and what its file is called.
+
+- The travel is `sweepTravel()` (`SharedCommands.h`, defined in
+  `CollisionFeature.cpp`): the sweep parameters' ranges, the same ends the
+  collision check searches.
+- A pose is `Simulation::poseAtWheelTravel()` laid over the table, written
+  through `HardpointDocument::writeTableTo()` -- the project's own workbook as
+  the template, so the files read like it.
+- **The ghosts are written**, unlike every other workbook write: a steered car
+  is not its own mirror image, and the far side is half of what is being
+  checked. They go down the append path like any point the workbook lacks.
+- At ride height a computed contact patch (stated angles, or a wheel axis
+  point) is where the solver puts it, which need not be the workbook's.
+- What was ticked, the folder and the name are in the manifest under
+  `poseExport`, saved when the user says Export.
+
 ## Comparing with Lotus
 
 Every measure was checked on 2026-09-12 against an independent solve of the

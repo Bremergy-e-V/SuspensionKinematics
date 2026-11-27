@@ -68,6 +68,10 @@ public:
     std::optional<HardpointImport> import(const QString& path, SessionMessage* problem);
     /// Write the table into @p path through the workbook the points came from.
     bool writeTo(const QString& path, SessionMessage* problem) const;
+    /// Write @p table, rather than the model's, into @p path through the same
+    /// workbook: what a posed export writes.
+    bool writeTableTo(const QString& path, const HardpointTable& table,
+                      SessionMessage* problem) const;
     /// Write the table into the project's own copy of the workbook, then read
     /// that back as the baseline. False, with @p problem said, when either
     /// half fails; the edits then stay pending.
